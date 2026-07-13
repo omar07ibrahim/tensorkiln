@@ -47,14 +47,15 @@ jobs:
     timeout-minutes: 10
     env:
       CXX: clang++-18
-      ASAN_OPTIONS: detect_leaks=1:halt_on_error=1:strict_string_checks=1
-      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+      ASAN_OPTIONS: "detect_leaks=1:halt_on_error=1:strict_string_checks=1"
+      UBSAN_OPTIONS: "halt_on_error=1:print_stacktrace=1"
     steps:
       - name: Check out source
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
       - name: Report toolchain
-        run: "$CXX" --version
+        run: |
+          "$CXX" --version
       - name: Build and test with sanitizers
         run: make -j2 PROFILE=sanitize test
