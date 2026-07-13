@@ -10,13 +10,17 @@ LIB_SOURCES := src/diagnostic.cpp src/graph.cpp src/shape.cpp \
 TEST_SOURCES := tests/test_graph.cpp tests/test_main.cpp tests/test_result.cpp \
                 tests/test_shape.cpp tests/test_shape_inference.cpp \
                 tests/test_tensor_type.cpp
+EXAMPLE_SOURCES := examples/inspect_graph.cpp
 
 LIB_OBJECTS := $(patsubst %.cpp,$(BUILD_DIR)/%.o,$(LIB_SOURCES))
 TEST_OBJECTS := $(patsubst %.cpp,$(BUILD_DIR)/%.o,$(TEST_SOURCES))
-DEPENDENCIES := $(LIB_OBJECTS:.o=.d) $(TEST_OBJECTS:.o=.d)
+EXAMPLE_OBJECTS := $(patsubst %.cpp,$(BUILD_DIR)/%.o,$(EXAMPLE_SOURCES))
+DEPENDENCIES := $(LIB_OBJECTS:.o=.d) $(TEST_OBJECTS:.o=.d) \
+                $(EXAMPLE_OBJECTS:.o=.d)
 
 LIBRARY := $(BUILD_DIR)/libtensorkiln.a
 TEST_BINARY := $(BUILD_DIR)/tensorkiln_tests
+EXAMPLE_BINARY := $(BUILD_DIR)/inspect_graph
 
 PROJECT_CPPFLAGS := -Iinclude -Itests -MMD -MP
 PROJECT_CXXFLAGS := -std=c++20 -Wall -Wextra -Wpedantic -Werror \
@@ -44,11 +48,11 @@ endif
 
 ARFLAGS := rcsD
 
-.PHONY: all test check sanitize clean help
+.PHONY: all test check sanitize example clean help
 
-all: $(LIBRARY)
+all: $(LIBRARY) $(EXAMPLE_BINARY)
 
-test: $(TEST_BINARY)
+test: $(TEST_BINARY) $(EXAMPLE_BINARY)
 	$(TEST_BINARY)
 
 check:
@@ -60,6 +64,9 @@ sanitize:
 	UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
 	$(MAKE) PROFILE=sanitize test
 
+example: $(EXAMPLE_BINARY)
+	$(EXAMPLE_BINARY)
+
 $(LIBRARY): $(LIB_OBJECTS)
 	@mkdir -p $(dir $@)
 	$(AR) $(ARFLAGS) $@ $^
@@ -67,6 +74,10 @@ $(LIBRARY): $(LIB_OBJECTS)
 $(TEST_BINARY): $(TEST_OBJECTS) $(LIBRARY)
 	@mkdir -p $(dir $@)
 	$(CXX) $(TEST_OBJECTS) $(LIBRARY) $(LDFLAGS) $(PROFILE_LDFLAGS) -o $@
+
+$(EXAMPLE_BINARY): $(EXAMPLE_OBJECTS) $(LIBRARY)
+	@mkdir -p $(dir $@)
+	$(CXX) $(EXAMPLE_OBJECTS) $(LIBRARY) $(LDFLAGS) $(PROFILE_LDFLAGS) -o $@
 
 $(BUILD_DIR)/%.o: %.cpp
 	@mkdir -p $(dir $@)
@@ -77,7 +88,7 @@ clean:
 	rm -rf build
 
 help:
-	@echo 'Targets: all test check sanitize clean help'
+	@echo 'Targets: all test check sanitize example clean help'
 	@echo 'Profiles: debug (default), release, sanitize'
 	@echo 'Example: make -j2 CXX=g++ PROFILE=release test'
 
