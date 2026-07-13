@@ -46,6 +46,9 @@ TK_TEST("Result accepts a move-only payload") {
 TK_TEST("Error codes have stable names") {
   TK_REQUIRE_EQ(tensorkiln::error_code_name(ErrorCode::rank_limit_exceeded),
                 "rank_limit_exceeded");
+  TK_REQUIRE_EQ(
+      tensorkiln::error_code_name(ErrorCode::broadcast_incompatible),
+      "broadcast_incompatible");
   TK_REQUIRE_EQ(tensorkiln::error_code_name(ErrorCode::byte_limit_exceeded),
                 "byte_limit_exceeded");
 }

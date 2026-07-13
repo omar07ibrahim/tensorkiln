@@ -12,6 +12,12 @@ std::string_view error_code_name(const ErrorCode code) noexcept {
       return "element_count_overflow";
     case ErrorCode::element_limit_exceeded:
       return "element_limit_exceeded";
+    case ErrorCode::broadcast_incompatible:
+      return "broadcast_incompatible";
+    case ErrorCode::matmul_rank_unsupported:
+      return "matmul_rank_unsupported";
+    case ErrorCode::matmul_inner_dimension_mismatch:
+      return "matmul_inner_dimension_mismatch";
     case ErrorCode::unsupported_element_type:
       return "unsupported_element_type";
     case ErrorCode::byte_count_overflow:
