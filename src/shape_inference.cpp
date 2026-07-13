@@ -11,6 +11,9 @@
 namespace tensorkiln {
 namespace {
 
+inline constexpr std::size_t kMinMatMulRank = 2U;
+inline constexpr std::size_t kMaxMatMulRank = 4U;
+
 [[nodiscard]] std::int64_t trailing_extent(const Shape& shape,
                                            const std::size_t offset) {
   if (offset >= shape.rank()) {
@@ -26,7 +29,7 @@ namespace {
   return Diagnostic{
       ErrorCode::broadcast_incompatible,
       std::string(context) + " cannot broadcast " + left.to_string() +
-          " with " + right.to_string() + ": aligned axis " +
+          " with " + right.to_string() + ": output axis " +
           std::to_string(aligned_axis) + " has extents " +
           std::to_string(left_extent) + " and " +
           std::to_string(right_extent),
@@ -80,10 +83,10 @@ Result<Shape> infer_broadcast_shape(const Shape& left, const Shape& right,
 
 Result<Shape> infer_matmul_shape(const Shape& left, const Shape& right,
                                  const ShapeLimits limits) {
-  if (left.rank() < 2U) {
+  if (left.rank() < kMinMatMulRank || left.rank() > kMaxMatMulRank) {
     return Result<Shape>::failure(matmul_rank_error("left", left.rank()));
   }
-  if (right.rank() < 2U) {
+  if (right.rank() < kMinMatMulRank || right.rank() > kMaxMatMulRank) {
     return Result<Shape>::failure(matmul_rank_error("right", right.rank()));
   }
 
