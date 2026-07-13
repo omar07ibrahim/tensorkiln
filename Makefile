@@ -48,7 +48,7 @@ endif
 
 ARFLAGS := rcsD
 
-.PHONY: all test check sanitize example clean help
+.PHONY: all test check sanitize oracle example clean help
 
 all: $(LIBRARY) $(EXAMPLE_BINARY)
 
@@ -58,11 +58,15 @@ test: $(TEST_BINARY) $(EXAMPLE_BINARY)
 check:
 	$(MAKE) PROFILE=debug test
 	$(MAKE) PROFILE=release test
+	$(MAKE) oracle
 
 sanitize:
 	ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:strict_string_checks=1 \
 	UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
 	$(MAKE) PROFILE=sanitize test
+
+oracle:
+	python3 -I tools/oracle.py --check tests/oracle_fixture.hpp
 
 example: $(EXAMPLE_BINARY)
 	$(EXAMPLE_BINARY)
@@ -88,7 +92,7 @@ clean:
 	rm -rf build
 
 help:
-	@echo 'Targets: all test check sanitize example clean help'
+	@echo 'Targets: all test check sanitize oracle example clean help'
 	@echo 'Profiles: debug (default), release, sanitize'
 	@echo 'Example: make -j2 CXX=g++ PROFILE=release test'
 
