@@ -111,7 +111,7 @@ TK_TEST("Graph IDs are dense stable and topological") {
   TK_REQUIRE_EQ(second.ordinal, 1U);
   TK_REQUIRE_EQ(graph.nodes().size(), 4U);
   TK_REQUIRE_EQ(graph.outputs().size(), 2U);
-  const Node& add = require_node(graph, NodeId{2U}, 2U);
+  const Node& add = require_node(graph, graph.nodes()[2].id(), 2U);
   TK_REQUIRE_EQ(add.inputs()[0], input);
   TK_REQUIRE_EQ(add.inputs()[1], bias);
   TK_REQUIRE_EQ(add.output_type().to_string(), "f32[2,3]");
@@ -203,7 +203,8 @@ TK_TEST("Constant owns caller data and distinguishes signed zero") {
   require_output(builder.output("result", constant));
   const VerifiedGraph graph = require_graph(std::move(builder).finish());
 
-  const Node& node = require_node(graph, NodeId{0U}, 0U);
+  TK_REQUIRE_EQ(graph.nodes().size(), 1U);
+  const Node& node = require_node(graph, graph.nodes()[0].id(), 0U);
   const auto* operation = std::get_if<ConstantOp>(&node.operation());
   TK_REQUIRE(operation != nullptr);
   TK_REQUIRE_EQ(operation->data.size(), 2U);
@@ -217,7 +218,9 @@ TK_TEST("Constant owns caller data and distinguishes signed zero") {
   require_output(positive_builder.output("result", positive));
   const VerifiedGraph positive_graph =
       require_graph(std::move(positive_builder).finish());
-  const Node& positive_node = require_node(positive_graph, NodeId{0U}, 0U);
+  TK_REQUIRE_EQ(positive_graph.nodes().size(), 1U);
+  const Node& positive_node =
+      require_node(positive_graph, positive_graph.nodes()[0].id(), 0U);
   const auto* positive_operation =
       std::get_if<ConstantOp>(&positive_node.operation());
   TK_REQUIRE(positive_operation != nullptr);
@@ -360,7 +363,7 @@ TK_TEST("Canonical dump is deterministic and graph-owned") {
                 "}\n");
 }
 
-TK_TEST("Graph lookups reject out-of-range and foreign IDs") {
+TK_TEST("Graph lookups reject foreign owner-tagged IDs") {
   GraphBuilder first_builder;
   const ValueId first_value =
       require_value(first_builder.input("x", make_type({1})));
@@ -375,7 +378,8 @@ TK_TEST("Graph lookups reject out-of-range and foreign IDs") {
   const VerifiedGraph second =
       require_graph(std::move(second_builder).finish());
 
-  TK_REQUIRE(first.node(NodeId{1U}) == nullptr);
+  TK_REQUIRE(first.node(second.nodes()[0].id()) == nullptr);
+  TK_REQUIRE(second.node(first.nodes()[0].id()) == nullptr);
   TK_REQUIRE(first.type(second_value) == nullptr);
   TK_REQUIRE(second.type(first_value) == nullptr);
   TK_REQUIRE_EQ(require_type(first, first_value).to_string(), "f32[1]");

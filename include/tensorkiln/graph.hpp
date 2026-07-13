@@ -31,10 +31,21 @@ class ValueId final {
   std::uint64_t owner_;
 };
 
-struct NodeId final {
-  std::uint32_t ordinal;
+class NodeId final {
+ public:
+  [[nodiscard]] std::uint32_t ordinal() const noexcept { return ordinal_; }
 
   friend bool operator==(const NodeId&, const NodeId&) noexcept = default;
+
+ private:
+  friend class GraphBuilder;
+  friend class VerifiedGraph;
+
+  NodeId(std::uint32_t ordinal, std::uint64_t owner) noexcept
+      : ordinal_(ordinal), owner_(owner) {}
+
+  std::uint32_t ordinal_;
+  std::uint64_t owner_;
 };
 
 struct OutputId final {

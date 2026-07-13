@@ -4,6 +4,7 @@
 #include <bit>
 #include <cstddef>
 #include <cstdint>
+#include <exception>
 #include <limits>
 #include <optional>
 #include <span>
@@ -23,7 +24,11 @@ inline constexpr std::uint64_t kFnvPrime = UINT64_C(1099511628211);
 
 [[nodiscard]] std::uint64_t next_owner() noexcept {
   static std::atomic<std::uint64_t> next{1U};
-  return next.fetch_add(1U, std::memory_order_relaxed);
+  const std::uint64_t owner = next.fetch_add(1U, std::memory_order_relaxed);
+  if (owner == 0U) {
+    std::terminate();
+  }
+  return owner;
 }
 
 [[nodiscard]] bool ascii_alpha(const char character) noexcept {
@@ -156,7 +161,10 @@ VerifiedGraph::VerifiedGraph(const std::uint64_t owner,
       outputs_(std::move(outputs)) {}
 
 const Node* VerifiedGraph::node(const NodeId id) const noexcept {
-  const std::size_t index = static_cast<std::size_t>(id.ordinal);
+  if (id.owner_ != owner_) {
+    return nullptr;
+  }
+  const std::size_t index = static_cast<std::size_t>(id.ordinal_);
   if (index >= nodes_.size()) {
     return nullptr;
   }
@@ -167,7 +175,7 @@ const TensorType* VerifiedGraph::type(const ValueId value) const noexcept {
   if (value.owner_ != owner_) {
     return nullptr;
   }
-  const Node* definition = node(NodeId{value.ordinal_});
+  const Node* definition = node(NodeId{value.ordinal_, owner_});
   if (definition == nullptr) {
     return nullptr;
   }
@@ -177,7 +185,7 @@ const TensorType* VerifiedGraph::type(const ValueId value) const noexcept {
 std::string VerifiedGraph::dump() const {
   std::string result{"tensorkiln.graph v0 {\n"};
   for (const Node& definition : nodes_) {
-    result += "  #n" + std::to_string(definition.id().ordinal) + " %" +
+    result += "  #n" + std::to_string(definition.id().ordinal()) + " %" +
               std::to_string(definition.output().ordinal()) + " = ";
 
     const Operation& operation = definition.operation();
@@ -275,7 +283,7 @@ Result<ValueId> GraphBuilder::commit_node(Operation operation,
   nodes_.reserve(nodes_.size() + 1U);
   const auto ordinal = static_cast<std::uint32_t>(nodes_.size());
   const ValueId value{ordinal, owner_};
-  nodes_.push_back(Node(NodeId{ordinal}, std::move(operation),
+  nodes_.push_back(Node(NodeId{ordinal, owner_}, std::move(operation),
                         std::move(inputs), value, std::move(output_type)));
   return Result<ValueId>::success(value);
 }
