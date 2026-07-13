@@ -1,0 +1,60 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  LC_ALL: C
+  TZ: UTC
+
+jobs:
+  build-test:
+    name: ${{ matrix.cxx }} / ${{ matrix.profile }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        cxx: [g++-14, clang++-18]
+        profile: [debug, release]
+    env:
+      CXX: ${{ matrix.cxx }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Report toolchain
+        run: |
+          "$CXX" --version
+          make --version
+      - name: Build and test
+        run: make -j2 PROFILE="${{ matrix.profile }}" test
+
+  sanitizers:
+    name: clang++-18 / asan+ubsan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      CXX: clang++-18
+      ASAN_OPTIONS: detect_leaks=1:halt_on_error=1:strict_string_checks=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+    steps:
+      - name: Check out source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Report toolchain
+        run: "$CXX" --version
+      - name: Build and test with sanitizers
+        run: make -j2 PROFILE=sanitize test
