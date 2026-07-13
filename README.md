@@ -1,5 +1,7 @@
 # TensorKiln
 
+[![CI][ci-badge]][ci-workflow]
+
 TensorKiln compiles static `f32` tensor graphs into bounded, cache-aware CPU
 execution plans.
 
@@ -8,9 +10,10 @@ hard parts inspectable: type and shape verification, deterministic graph
 rewrites, layout lowering, kernel selection, lifetime-based memory reuse, and
 differential validation against a separate reference interpreter.
 
-> **Status:** the compiler contract is frozen and the typed IR foundation is
-> under construction. The README describes the v0.1 target, not functionality
-> that has already shipped.
+> **Status:** the bounded type system and typed graph front-end are available.
+> The reference interpreter, optimization passes, and execution-plan runtime
+> remain under construction. The v0.1 sections below describe the target, not
+> functionality that has already shipped.
 
 ## Why this exists
 
@@ -50,6 +53,32 @@ The semantics borrow only the relevant, explicitly documented pieces of the
 [broadcasting](https://onnx.ai/onnx/repo-docs/Broadcasting.html) contracts.
 TensorKiln is not an ONNX importer and does not claim ONNX conformance.
 
+## Available now
+
+The current vertical slice is small but executable:
+
+- checked scalar and rank 1-4 tensor types with explicit element/byte ceilings;
+- trailing multidirectional broadcasting and rank 2-4 batched `MatMul`
+  inference;
+- a transactional `GraphBuilder` for `Input`, `Constant`, `Add`, `MatMul`, and
+  `Relu`;
+- owner-tagged handles that reject accidental cross-graph use;
+- immutable verified graphs with deterministic, golden-tested IR dumps;
+- graph-wide node, output, name, tensor, and cumulative constant-data limits.
+
+Validation failures never consume an ID, reserve a name, or mutate resource
+counters. Constants own their exact IEEE-754 payload; the canonical dump uses a
+stable bitwise fingerprint and does not depend on locale or pointer values.
+
+```bash
+make -j2 test
+make -j2 example
+```
+
+The first command runs the strict dependency-free test suite. The second builds
+and prints a small broadcast-add graph. See [the graph IR contract](docs/ir.md)
+for the current grammar and invariants.
+
 ## Proof obligations
 
 The first release is complete only when the repository demonstrates all of the
@@ -79,3 +108,6 @@ runtime dependency.
 ## License
 
 [MIT](LICENSE)
+
+[ci-badge]: https://github.com/omar07ibrahim/tensorkiln/actions/workflows/ci.yml/badge.svg
+[ci-workflow]: https://github.com/omar07ibrahim/tensorkiln/actions/workflows/ci.yml
