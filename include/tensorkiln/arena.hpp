@@ -129,4 +129,13 @@ class ArenaPlacementVerifier final {
       ArenaLimits limits = ArenaLimits{});
 };
 
+class ArenaPlanner final {
+ public:
+  ArenaPlanner() = delete;
+
+  [[nodiscard]] static Result<ArenaPlan> run(
+      std::span<const ArenaBufferRequest> requests,
+      ArenaLimits limits = ArenaLimits{});
+};
+
 }  // namespace tensorkiln
