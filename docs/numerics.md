@@ -40,3 +40,7 @@ only the Python standard library.
 
 This makes agreement meaningful: sharing parsing or shape metadata is allowed,
 sharing the numerical implementation under test is not.
+
+The currently executable operation-by-operation behavior, floating-point
+environment checks, special-value rules, and exact reference work accounting
+are specified in [the reference interpreter contract](reference.md).
