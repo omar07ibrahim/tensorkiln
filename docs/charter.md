@@ -75,13 +75,16 @@ graph. Compilation then performs, in order:
 8. independent verification of the resulting plan.
 
 This sequence is the v0.1 target. Dead-code elimination and exact structural
-canonicalization are the graph-to-graph stages available today. The standalone
-interval-placement core for stage 7 and its placement verifier are also
-available: they consume caller-supplied storage-root sizes and lifetimes, but do
-not derive them from a `VerifiedGraph` or lowered plan. Fusion, layout lowering,
-kernel selection, graph-to-arena request derivation, alias proof, scratch
-integration, and optimized execution remain under construction. The shipped
-storage boundary is specified in [the arena contract](arena.md).
+canonicalization are the graph-to-graph stages available today. A storage-only
+proof slice of stage 7 is also available: the standalone interval core accepts
+explicit requests, while graph arena lowering derives one request for every
+current `Add`, `MatMul`, and `Relu` result and requires independent reverse
+agreement before returning it. This projection intentionally precedes the
+unfinished intermediate stages and is not a lowered execution plan. Fusion,
+layout lowering, kernel selection, view and in-place alias proof, prepacking,
+scratch integration, arena allocation, and optimized execution remain under
+construction. The shipped storage boundary is specified in
+[the arena contract](arena.md).
 
 Dead-code elimination treats every declared output and every `Input`
 definition as a root. It preserves the external feed schema, output declaration

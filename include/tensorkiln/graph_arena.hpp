@@ -14,8 +14,8 @@ namespace tensorkiln {
 // Owns a verified storage-only projection of a graph onto one sequential arena.
 // Add, MatMul, and Relu nodes receive dense execution steps and compact buffer
 // ordinals in source-node order. Input and Constant values remain external.
-// Dead compute is retained, while graph outputs stay live through the terminal
-// execution boundary.
+// Dead compute is retained, while arena-backed graph outputs remain live
+// through the final compute step and end at the terminal execution boundary.
 //
 // For a materialized value produced at step p, its request begins at p and
 // ends at the maximum of p + 1, every consumer step + 1, and the execution

@@ -5,8 +5,9 @@ is specified separately in [the interpreter contract](reference.md). The
 available graph-to-graph rewrites are specified in
 [the compiler-pass contract](compiler.md). Dead-code elimination and structural
 canonicalization are available. The standalone interval-placement API is
-specified in [the arena contract](arena.md); fusion, lowered layouts,
-graph-to-arena request derivation, and execution belong to later layers.
+specified in [the arena contract](arena.md), together with the shipped
+storage-only graph projection. Fusion, lowered layouts, alias and scratch
+lowering, kernels, and execution belong to later layers.
 
 ## Construction boundary
 

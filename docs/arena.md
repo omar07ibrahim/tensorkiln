@@ -1,15 +1,19 @@
-# Interval arena planning
+# Verified arena storage planning
 
-TensorKiln ships a standalone storage-placement core with two public entry
-points: `ArenaPlanner::run()` creates a deterministic placement, and
-`ArenaPlacementVerifier::verify()` independently validates a supplied
-placement. Both consume explicit buffer sizes and execution lifetimes and
-produce a read-only `ArenaPlan` artifact.
+TensorKiln ships two related storage-only API layers:
 
-This is the storage-placement portion of a future arena stage, not graph-to-plan
-integration. It does not inspect a `VerifiedGraph`, derive liveness, prove view
-or in-place alias legality, derive requirements for kernel scratch, allocate
-memory, or execute kernels.
+- `ArenaPlanner::run()` and `ArenaPlacementVerifier::verify()` consume explicit
+  buffer sizes, lifetimes, and placements;
+- `GraphArenaLowering::run()` and `GraphArenaPlacementVerifier::verify()` derive
+  those sizes and lifetimes from a `VerifiedGraph` containing the currently
+  supported materializing operations.
+
+The explicit layer returns a read-only `ArenaPlan`. The graph layer returns a
+move-only `GraphArenaLoweringResult` that owns the value-to-buffer mapping, the
+exact derived requests, and a verified `ArenaPlan`. Neither layer returns an
+executable plan: they do not lower layouts, prove view or in-place alias
+legality, derive kernel scratch, prepack constants, allocate memory, or execute
+kernels.
 
 ## Public boundary
 
@@ -60,12 +64,60 @@ End events occur before begin events at the same boundary. Two requests with
 lifetimes `[0,1)` and `[1,2)` may therefore reuse the same bytes. Two separate
 requests whose lifetimes intersect may not overlap in bytes.
 
-Requests describe storage roots, not logical tensor values. A future lowerer
-must collapse intentional simultaneous aliases or views into one root request
-and extend that root's lifetime across every use. Supplying two distinct live
-requests at the same offset is rejected even if the caller intended them to
-alias. The verifier proves safety only for the sizes and lifetimes it receives;
-it does not prove that those inputs were derived correctly.
+Requests describe storage roots, not logical tensor values. Callers of the
+explicit API must collapse intentional simultaneous aliases or views into one
+root request and extend that root's lifetime across every use. Supplying two
+distinct live requests at the same offset is rejected even if the caller
+intended them to alias. `ArenaPlacementVerifier` proves safety only for the
+sizes and lifetimes it receives; it does not prove that those inputs were
+derived correctly.
+
+## Graph-derived storage projection
+
+`GraphArenaLowering::run(source, limits)` borrows one valid, non-moved-from
+`VerifiedGraph` for the call and creates a storage projection for exactly that
+graph. `GraphArenaPlacementVerifier::verify()` has the same source precondition.
+Neither API runs dead-code elimination, canonicalization, or any other compiler
+pass. Callers can compose the current stages explicitly:
+
+```text
+VerifiedGraph
+  -> optional DeadCodeElimination
+  -> optional StructuralCanonicalization
+  -> GraphArenaLowering::run(selected_graph)
+```
+
+The graph projection applies these exact rules:
+
+1. Visit definitions in source-node order. Each `Add`, `MatMul`, and `Relu`
+   result receives one dense execution step and one dense buffer ordinal.
+   `Input` and `Constant` values remain external and consume neither domain.
+2. The request payload is the verified output type's exact byte count. All dead
+   compute remains present unless the caller ran DCE first.
+3. Let `C` be the compute-step count and let a buffer be produced at step `p`.
+   Its lifetime begins at `p`. Its exclusive end is the maximum of `p + 1`,
+   every consuming compute step plus one, and `C` when the value is named by at
+   least one graph output.
+4. Run the deterministic `ArenaPlanner` on those requests.
+5. Independently reconstruct the graph-to-buffer mapping and requests in
+   `GraphArenaPlacementVerifier`, verify the supplied placements, and require
+   exact agreement on source and step counts, owner-tagged values, requests,
+   limits, statistics, and every allocation field.
+
+An operation therefore overlaps its result with every arena-backed operand for
+the whole consumer step. An arena-backed output remains live through the final
+compute step and ends at exclusive terminal boundary `C`; multiple output
+labels for one value do not create extra buffers. The successful artifact
+proves byte-placement safety for this sequential storage model. It does not
+prove layout, strides, views, alias roots, in-place legality, prepacking,
+scratch requirements, parallel scheduling, numerical execution, or minimum
+possible workspace.
+
+`GraphArenaPlacementVerifier::verify(source, placements, limits)` exposes the
+reverse path directly. Placement `#bN` addresses the Nth materializing result
+in source-node order, even when its graph value ordinal differs because inputs
+and constants are interspersed. This API is useful for checking a separately
+created placement without trusting separately supplied lifetimes.
 
 ## Alignment and statistics
 
@@ -89,16 +141,17 @@ typed failure even when lifetime reuse might make a smaller physical workspace
 possible. An externally supplied, valid placement may contain gaps, so its
 `workspace_bytes` can exceed `total_reserved_bytes`.
 
-Workspace accounting is semantic-agnostic and includes every supplied request.
-It excludes only resources omitted from the request list, along with an aligned
-allocator's base over-allocation and metadata. A future lowerer is expected to
-omit external inputs, immutable constants, prepacked weights, and metadata-only
-views, while representing workspace-backed kernel scratch as storage-root
-requests.
+Workspace accounting in the explicit layer is semantic-agnostic and includes
+every supplied request. It excludes only resources omitted from the request
+list, along with an aligned allocator's base over-allocation and metadata. The
+current graph projection omits external inputs and immutable constants and
+includes every `Add`, `MatMul`, and `Relu` result. Prepacked weights,
+metadata-only views, aliases, and kernel scratch do not yet exist in that
+projection.
 
-## Exact verifier order
+## Exact explicit-placement verifier order
 
-Validation has deterministic precedence:
+`ArenaPlacementVerifier` validation has deterministic precedence:
 
 1. Check request count against both the dense `uint32_t` ordinal domain and
    `limits.max_buffers`.
@@ -169,6 +222,23 @@ only while that plan is unchanged. Assigning to it, moving from it, or
 destroying it invalidates them. After moving from a plan, only assignment and
 destruction are supported.
 
+`GraphArenaLoweringResult` is move-only and owns its source counts, dense
+owner-tagged value mapping, requests, and verified `ArenaPlan`; the source graph
+need not outlive it. Its lookups return no mapping for external, foreign, or
+out-of-range values and deliberately do not classify which case occurred.
+Moving from, assigning to, or destroying the result invalidates every borrowed
+reference, pointer, and span. After moving from a result, the source supports
+only assignment or destruction.
+
+The public `GraphArenaPlacementVerifier` propagates placement validation, limit,
+and host-addressability diagnostics. `GraphArenaLowering::run()` propagates
+buffer-count, checked-size, workspace-policy, and host-addressability failures
+from planning. A malformed derived request, an unexpected planner diagnostic,
+a failure of mandatory reverse verification, or any forward/reverse
+disagreement is `compiler_internal_invariant`, because it indicates a
+TensorKiln defect rather than caller input. Ordinary C++ allocation failure
+remains `std::bad_alloc`.
+
 ## Worked schedule
 
 The runnable [arena example](../examples/plan_arena.cpp) supplies four storage
@@ -193,3 +263,11 @@ cover misalignment, predecessor and successor overlap, gaps, exact policy
 limits, overflow, split and coalescing behavior, frontier growth, 4096 and 4097
 request boundaries, `UINT32_MAX` endpoints, seeded determinism, and comparison
 with an independent pairwise overlap oracle.
+
+The runnable [graph example](../examples/inspect_graph.cpp) explicitly applies
+DCE and structural canonicalization before graph arena lowering. Its three
+`f32[2,3]` compute results carry 24-byte payloads with lifetimes `[0,2)`,
+`[1,3)`, and `[2,3)`. Their 64-byte reservations use offsets 0, 64, and 0, so a
+valid 128-byte workspace holds 192 bytes of aligned reservations. This is a
+verified non-executable storage projection; the example's separate reference
+interpretation does not use that workspace.

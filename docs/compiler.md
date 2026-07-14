@@ -5,10 +5,12 @@ elimination and structural canonicalization. Each accepts only a
 `VerifiedGraph`, produces a new verified graph in a fresh owner domain, and
 returns explicit provenance and accounting for the rewrite.
 
-Fusion, layout lowering, kernel selection, graph-to-arena request derivation,
-and optimized execution remain later layers. A standalone interval arena
-planner and placement verifier are available separately; they are not
-graph-to-graph rewrites and are specified in [the arena contract](arena.md).
+Graph arena lowering is also available as a storage-only projection. It derives
+lifetimes for the current materializing operations and requires independent
+reverse placement verification, but it is not a graph-to-graph rewrite or an
+executable plan. Fusion, layout lowering, kernel selection, alias and scratch
+lowering, and optimized execution remain later layers. The complete storage
+boundary is specified in [the arena contract](arena.md).
 
 ## Public boundary
 
@@ -38,6 +40,30 @@ Both result types are move-only because they own rewritten graphs. A source
 graph is not mutated and need not outlive its result. Passing DCE provenance to
 structural canonicalization keeps the final lineage rooted in the graph that
 preceded DCE.
+
+## Composition with graph arena lowering
+
+Compiler passes and storage lowering are separate, explicit calls:
+
+```cpp
+auto storage = tensorkiln::GraphArenaLowering::run(compiled.graph());
+if (storage.error_if() != nullptr) {
+  report(*storage.error_if());
+  return;
+}
+
+tensorkiln::GraphArenaLoweringResult projection =
+    std::move(*storage.value_if());
+```
+
+Lowering the source graph directly retains all dead compute. Lowering the DCE
+result reflects its fresh owner domain and any removed definitions; lowering
+the canonicalized result additionally reflects exact CSE and redundant-ReLU
+removal. `GraphArenaLowering` does not choose that ordering, mutate the selected
+graph, or carry compiler provenance into its result. It assigns dense steps
+only to `Add`, `MatMul`, and `Relu`; inputs and constants remain external. A
+successful result proves a reverse-verified sequential storage placement, not
+numerical equivalence or execution.
 
 ## Dead-code elimination: reachability
 

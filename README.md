@@ -4,9 +4,10 @@
 
 TensorKiln is a dependency-free C++20 project for compiling static `f32` tensor
 graphs into bounded, cache-aware CPU execution plans. The shipped front half
-verifies, reference-executes, and deterministically rewrites graphs. A
-standalone verified arena core now packs explicit buffer lifetimes; lowering
-graphs into plans and optimized execution are the next layers.
+verifies, reference-executes, and deterministically rewrites graphs. It also
+derives a storage-only lifetime projection from a graph, packs that projection,
+and accepts it only after an independent reverse reconstruction agrees. Layout
+lowering, kernels, and optimized execution are the next layers.
 
 The project is a deliberately narrow C++20 compiler/runtime, built to make the
 hard parts inspectable: type and shape verification, deterministic graph
@@ -16,11 +17,11 @@ differential validation against a separate reference interpreter.
 > **Status:** the bounded type system, typed graph front-end, independent Python
 > oracle, bounded reference interpreter, and deterministic dead-code
 > elimination and structural canonicalization with composable provenance are
-> available, together with a deterministic 64-byte interval arena planner and
-> independent placement verifier. Fusion, layout lowering, graph-to-arena
-> request derivation, kernels, and the optimized executor remain under
-> construction. The v0.1 contract below is the target; **Available now** is the
-> shipped subset.
+> available, together with graph-derived compute lifetimes, a deterministic
+> 64-byte interval arena planner, and independent reverse placement
+> verification. Fusion, layout lowering, alias and scratch lowering, kernels,
+> and the optimized executor remain under construction. The v0.1 contract
+> below is the target; **Available now** is the shipped subset.
 
 ## Why this exists
 
@@ -29,17 +30,17 @@ trade-offs behind a large dependency stack. TensorKiln keeps one useful slice
 small enough to audit end to end:
 
 ```text
-GraphBuilder
-    -> verify and infer
-    -> eliminate dead code
-    -> canonicalize exact structure
-    -> fuse safe epilogues
-    -> lower layouts and select kernels
-    -> plan one bounded arena
-    -> execute without per-run heap allocation
+VerifiedGraph
+    -> optional dead-code elimination
+    -> optional exact structural canonicalization
+    -> derive storage-only compute lifetimes
+    -> apply the deterministic arena heuristic
+    -> independently reconstruct and verify exact agreement
 ```
 
-The goal is evidence, not a production-runtime claim. Every optimized result
+These are explicit API calls: arena lowering operates on whichever verified
+graph the caller supplies and does not silently run compiler passes. The goal
+is evidence, not a production-runtime claim. Every eventual optimized result
 must agree with the unoptimized interpreter under a documented numerical
 policy, and every memory-plan claim must be derived from a verifiable plan.
 
@@ -63,7 +64,7 @@ TensorKiln is not an ONNX importer and does not claim ONNX conformance.
 
 ## Available now
 
-The current vertical slice is small but executable:
+The current vertical slice is small but runnable and inspectable:
 
 - checked scalar and rank 1-4 tensor types with explicit element/byte ceilings;
 - trailing multidirectional broadcasting and rank 2-4 batched `MatMul`
@@ -92,7 +93,15 @@ The current vertical slice is small but executable:
   boundary reuse;
 - an independent placement verifier with checked arithmetic, exact workspace
   accounting, canonical dumps, stable diagnostics, and seeded pairwise-oracle
-  coverage.
+  coverage;
+- a graph-to-arena storage projection that gives every `Add`, `MatMul`, and
+  `Relu` result a dense sequential step and buffer ordinal, leaves inputs and
+  constants external, retains dead compute, and keeps arena-backed outputs live
+  through the final compute step;
+- mandatory reverse reconstruction of graph mappings, lifetimes, limits,
+  statistics, and allocations before a planned graph projection is returned,
+  with seeded DAG, heterogeneous `MatMul`, ownership, fault-injection, and exact
+  4096/4097-buffer boundary evidence.
 
 Validation failures never consume an ID, reserve a name, or mutate resource
 counters. Constants own their exact IEEE-754 payload; the canonical dump uses a
@@ -105,15 +114,16 @@ make oracle
 ```
 
 The first command runs the strict dependency-free test suite and smoke-executes
-both checked examples. The second prints the graph-rewrite pipeline and a
-verified 384-to-192-byte interval-reuse schedule. The third proves that the
-committed golden fixture still matches the independent generator. See
+both checked examples. The second prints the graph-rewrite pipeline, its
+non-executable 192-to-128-byte graph storage projection, and a standalone
+384-to-192-byte interval-reuse schedule. The third proves that the committed
+golden fixture still matches the independent generator. See
 [the graph IR contract](docs/ir.md) for construction invariants and
 [the reference interpreter contract](docs/reference.md) for execution,
 resource, lifetime, and numerical semantics. See
 [the compiler-pass contract](docs/compiler.md) for dead-code roots, semantic
 equivalence, exact canonicalization rules, output alias classes, provenance
-composition, and determinism. The standalone storage-placement boundary is
+composition, and determinism. The verified storage-planning boundary is
 specified in [the arena contract](docs/arena.md).
 
 ## Proof obligations
