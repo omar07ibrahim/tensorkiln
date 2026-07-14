@@ -47,9 +47,13 @@ are specified in [the reference interpreter contract](reference.md).
 
 ## Structural pass rule
 
-Dead-code elimination has no numerical tolerance. It neither replaces nor
-reorders live arithmetic, so successful source and rewritten executions with
-the same bindings must produce bit-identical outputs, including signed-zero and
-NaN payload bits. Reference resource counters and sticky exception flags from
-eliminated work are outside this equivalence boundary. See
+Dead-code elimination and structural canonicalization have no numerical
+tolerance. They neither replace nor reorder retained arithmetic. Exact CSE
+reuses one evaluation of an identical operation, and redundant ReLU removal
+uses the interpreter's explicitly idempotent special-value semantics.
+Whenever source and rewritten executions with the same bindings both complete
+under the caller's `ReferenceLimits`, they must produce bit-identical
+provenance-mapped values and outputs, including signed-zero and NaN payload
+bits. Reference resource counters and sticky exception flags from eliminated
+or merged work are outside this equivalence boundary. See
 [the compiler-pass contract](compiler.md).

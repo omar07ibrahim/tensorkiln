@@ -2,8 +2,10 @@
 
 [![CI][ci-badge]][ci-workflow]
 
-TensorKiln compiles static `f32` tensor graphs into bounded, cache-aware CPU
-execution plans.
+TensorKiln is a dependency-free C++20 project for compiling static `f32` tensor
+graphs into bounded, cache-aware CPU execution plans. The shipped front half
+verifies, reference-executes, and deterministically rewrites graphs; plan
+lowering and optimized execution are the next layers.
 
 The project is a deliberately narrow C++20 compiler/runtime, built to make the
 hard parts inspectable: type and shape verification, deterministic graph
@@ -12,10 +14,10 @@ differential validation against a separate reference interpreter.
 
 > **Status:** the bounded type system, typed graph front-end, independent Python
 > oracle, bounded reference interpreter, and deterministic dead-code
-> elimination with composable provenance are available. Additional
-> canonicalization and fusion passes, layout lowering, arena planning, kernels,
-> and the optimized executor remain under construction. The v0.1 contract below
-> is the target; **Available now** is the shipped subset.
+> elimination and structural canonicalization with composable provenance are
+> available. Fusion, layout lowering, arena planning, kernels, and the optimized
+> executor remain under construction. The v0.1 contract below is the target;
+> **Available now** is the shipped subset.
 
 ## Why this exists
 
@@ -27,7 +29,8 @@ small enough to audit end to end:
 GraphBuilder
     -> verify and infer
     -> eliminate dead code
-    -> canonicalize and fuse safe epilogues
+    -> canonicalize exact structure
+    -> fuse safe epilogues
     -> lower layouts and select kernels
     -> plan one bounded arena
     -> execute without per-run heap allocation
@@ -75,8 +78,12 @@ The current vertical slice is small but executable:
 - deterministic dead-code elimination that preserves the complete input
   contract, output declaration order and aliases, exact source construction
   limits, and bitwise constant payloads;
+- deterministic structural canonicalization with exact CSE for `Add`, `MatMul`,
+  and `Relu`, plus the semantics-preserving `Relu(Relu(x)) -> Relu(x)` rule;
+- an output-alias guard that prevents equivalent source outputs from silently
+  collapsing into one result value;
 - owner-safe, composable provenance with stable pass statistics and
-  deterministic dumps.
+  deterministic dumps, including many-source-to-one-result lineage.
 
 Validation failures never consume an ID, reserve a name, or mutate resource
 counters. Constants own their exact IEEE-754 payload; the canonical dump uses a
@@ -95,7 +102,8 @@ that the committed golden fixture still matches the independent generator. See
 [the reference interpreter contract](docs/reference.md) for execution,
 resource, lifetime, and numerical semantics. See
 [the compiler-pass contract](docs/compiler.md) for dead-code roots, semantic
-equivalence, provenance composition, and determinism.
+equivalence, exact canonicalization rules, output alias classes, provenance
+composition, and determinism.
 
 ## Proof obligations
 
