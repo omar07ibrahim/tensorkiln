@@ -59,6 +59,14 @@ struct InputOp final {
 };
 
 struct ConstantOp final {
+  ConstantOp(std::string name, std::vector<float> data,
+             std::uint64_t fingerprint);
+  ConstantOp(const ConstantOp& other);
+  ConstantOp(ConstantOp&&) noexcept = default;
+  ConstantOp& operator=(const ConstantOp& other);
+  ConstantOp& operator=(ConstantOp&&) noexcept = default;
+  ~ConstantOp() = default;
+
   std::string name;
   std::vector<float> data;
   std::uint64_t fingerprint;

@@ -300,19 +300,26 @@ TK_TEST("DCE is bitwise reference equivalent while removing dead resource work")
 
 TK_TEST("DCE copies live constant bits and fingerprints without canonicalization") {
   GraphBuilder builder;
-  const std::array<float, 4U> live_data{{
+  const std::array<float, 5U> live_data{{
       0.0F,
       -0.0F,
       std::bit_cast<float>(UINT32_C(0x7fc12345)),
       std::bit_cast<float>(UINT32_C(0x80000001)),
+      std::bit_cast<float>(UINT32_C(0x7f812345)),
   }};
+  TK_REQUIRE_EQ(std::bit_cast<std::uint32_t>(live_data[4]), 0x7f812345U);
   const std::array<float, 4U> dead_data{{1.0F, 2.0F, 3.0F, 4.0F}};
   const ValueId live = require_value(
-      builder.constant("live", make_type({4}), live_data));
+      builder.constant("live", make_type({5}), live_data));
   static_cast<void>(
       require_value(builder.constant("dead", make_type({4}), dead_data)));
   require_output(builder.output("result", live));
   const VerifiedGraph source = require_graph(std::move(builder).finish());
+  VerifiedGraph copied_source = source;
+  copied_source = source;
+  const ConstantOp& copied_constant =
+      std::get<ConstantOp>(copied_source.nodes()[0].operation());
+  require_bits_equal(copied_constant.data, live_data);
 
   const DeadCodeEliminationResult eliminated =
       require_dce(DeadCodeElimination::run(source));
@@ -321,12 +328,13 @@ TK_TEST("DCE copies live constant bits and fingerprints without canonicalization
       std::get<ConstantOp>(source.nodes()[0].operation());
   const ConstantOp& result_constant =
       std::get<ConstantOp>(eliminated.graph().nodes()[0].operation());
+  require_bits_equal(source_constant.data, live_data);
   TK_REQUIRE_EQ(result_constant.name, source_constant.name);
   TK_REQUIRE_EQ(result_constant.fingerprint, source_constant.fingerprint);
   require_bits_equal(result_constant.data, source_constant.data);
 
   const DeadCodeEliminationStats expected_stats{
-      2U, 1U, 1U, 8U, 4U, 4U,
+      2U, 1U, 1U, 9U, 5U, 4U,
   };
   TK_REQUIRE_EQ(eliminated.stats(), expected_stats);
 

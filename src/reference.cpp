@@ -16,6 +16,8 @@
 #include <variant>
 #include <vector>
 
+#include "float_bits.hpp"
+
 namespace tensorkiln {
 namespace {
 
@@ -448,10 +450,12 @@ Result<ReferenceResult> ReferenceInterpreter::run(
         Overloaded{
             [&](const InputOp&) {
               assert(selected[node_index] != nullptr);
-              return std::vector<float>(selected[node_index]->data.begin(),
-                                        selected[node_index]->data.end());
+              return detail::copy_float_bits(selected[node_index]->data);
             },
-            [](const ConstantOp& constant) { return constant.data; },
+            [](const ConstantOp& constant) {
+              return detail::copy_float_bits(
+                  std::span<const float>{constant.data});
+            },
             [&](const AddOp&) {
               assert(node.inputs().size() == 2U);
               const std::size_t left_index =

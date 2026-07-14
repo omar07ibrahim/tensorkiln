@@ -14,6 +14,7 @@
 #include <variant>
 #include <vector>
 
+#include "float_bits.hpp"
 #include "tensorkiln/shape_inference.hpp"
 
 namespace tensorkiln {
@@ -117,7 +118,7 @@ inline constexpr std::uint64_t kFnvPrime = UINT64_C(1099511628211);
 
 [[nodiscard]] std::uint64_t fingerprint(const std::span<const float> data) {
   std::uint64_t hash = kFnvOffsetBasis;
-  for (const float value : data) {
+  for (const float& value : data) {
     const std::uint32_t bits = std::bit_cast<std::uint32_t>(value);
     for (std::uint32_t shift = 0U; shift < 32U; shift += 8U) {
       const auto byte = static_cast<std::uint8_t>((bits >> shift) & 0xffU);
@@ -140,6 +141,30 @@ inline constexpr std::uint64_t kFnvPrime = UINT64_C(1099511628211);
 }
 
 }  // namespace
+
+ConstantOp::ConstantOp(std::string operation_name,
+                       std::vector<float> operation_data,
+                       const std::uint64_t operation_fingerprint)
+    : name(std::move(operation_name)),
+      data(std::move(operation_data)),
+      fingerprint(operation_fingerprint) {}
+
+ConstantOp::ConstantOp(const ConstantOp& other)
+    : name(other.name),
+      data(detail::copy_float_bits(other.data)),
+      fingerprint(other.fingerprint) {}
+
+ConstantOp& ConstantOp::operator=(const ConstantOp& other) {
+  if (this == &other) {
+    return *this;
+  }
+  std::string copied_name = other.name;
+  std::vector<float> copied_data = detail::copy_float_bits(other.data);
+  name = std::move(copied_name);
+  data = std::move(copied_data);
+  fingerprint = other.fingerprint;
+  return *this;
+}
 
 Node::Node(const NodeId id, Operation operation, std::vector<ValueId> inputs,
            const ValueId output, TensorType output_type)
@@ -343,7 +368,7 @@ Result<ValueId> GraphBuilder::constant(std::string name, TensorType type,
     return Result<ValueId>::failure(node_limit_error(limits_.max_nodes));
   }
 
-  std::vector<float> owned(data.begin(), data.end());
+  std::vector<float> owned = detail::copy_float_bits(data);
   const std::uint64_t data_fingerprint = fingerprint(owned);
   auto committed = commit_node(
       ConstantOp{std::move(name), std::move(owned), data_fingerprint}, {},
