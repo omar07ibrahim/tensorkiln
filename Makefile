@@ -8,11 +8,12 @@ BUILD_DIR := build/$(CXX_TAG)/$(PROFILE)
 LIB_SOURCES := src/compiler_support.cpp src/dead_code_elimination.cpp \
                src/diagnostic.cpp src/graph.cpp src/provenance.cpp \
                src/reference.cpp src/shape.cpp src/shape_inference.cpp \
-               src/tensor_type.cpp
+               src/structural_canonicalization.cpp src/tensor_type.cpp
 TEST_SOURCES := tests/test_dead_code_elimination.cpp tests/test_graph.cpp \
                 tests/test_main.cpp tests/test_reference.cpp \
                 tests/test_provenance.cpp tests/test_result.cpp \
                 tests/test_shape.cpp tests/test_shape_inference.cpp \
+                tests/test_structural_canonicalization.cpp \
                 tests/test_tensor_type.cpp
 EXAMPLE_SOURCES := examples/inspect_graph.cpp
 
