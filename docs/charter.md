@@ -1,17 +1,18 @@
-# TensorKiln v0.1 charter
+# TensorKiln v0.1.0 target charter
 
-This document is the scope boundary for the first public release. A feature is
-not part of v0.1 merely because it would be useful; it must fit the invariants
-and proof plan below.
+This document is the scope boundary for the non-prerelease v0.1.0 target. A
+feature is not part of that target merely because it would be useful; it must
+fit the invariants and proof plan below.
 
 ## Target product claim
 
-At v0.1 completion, TensorKiln will be an educational but rigorous static
-tensor-graph compiler and CPU runtime. It will accept a small programmatic
-graph, reject invalid programs, derive all result types, compile valid graphs
-into explicit execution plans, and run those plans inside a preallocated
-workspace. The currently shipped graph front-end, reference interpreter, and
-graph rewrites are listed in the README.
+When the v0.1.0 target is complete, TensorKiln will be an educational but
+rigorous static tensor-graph compiler and CPU runtime. It will accept a small
+programmatic graph, reject invalid programs, derive all result types, compile
+valid graphs into explicit execution plans, and run those plans inside a
+preallocated workspace. The currently shipped graph front-end, reference
+interpreter, graph rewrites, and storage-planning slice are listed in the
+README.
 
 It qualifies as a graph compiler by owning and testing semantic verification,
 whole-graph rewrites, layout decisions, kernel selection, and storage planning.
@@ -112,16 +113,19 @@ explicit pass result rather than metadata embedded in the source graph dump.
 
 ## Execution boundary
 
-- The reference interpreter executes the verified source graph and allocates a
-  distinct contiguous result for every node.
-- The optimized executor runs a verified plan in an aligned workspace.
-- External inputs and immutable constants do not consume arena storage.
-- Views alias a root allocation and extend that root's lifetime.
-- Graph outputs remain live until execution ends.
-- A compiled graph is immutable. An execution session owns mutable workspace
-  and is deliberately not thread-safe.
-- After session construction, `run()` performs no heap allocation.
-- Output views remain valid only until the next `run()` on that session.
+The alpha ships a reference interpreter that executes the verified source graph
+and allocates a distinct contiguous result for every node. The items below
+describe the v0.1.0 optimized-execution target and are not available in
+v0.1.0-alpha.1:
+
+- the optimized executor runs a verified plan in an aligned workspace;
+- external inputs and immutable constants do not consume arena storage;
+- views alias a root allocation and extend that root's lifetime;
+- graph outputs remain live until execution ends;
+- a compiled graph is immutable, while an execution session owns mutable
+  workspace and is deliberately not thread-safe;
+- after session construction, `run()` performs no heap allocation;
+- output views remain valid only until the next `run()` on that session.
 
 ## Required evidence
 
