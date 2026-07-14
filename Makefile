@@ -14,6 +14,7 @@ TEST_SOURCES := tests/test_dead_code_elimination.cpp tests/test_graph.cpp \
                 tests/test_provenance.cpp tests/test_result.cpp \
                 tests/test_shape.cpp tests/test_shape_inference.cpp \
                 tests/test_structural_canonicalization.cpp \
+                tests/test_structural_canonicalization_contracts.cpp \
                 tests/test_tensor_type.cpp
 EXAMPLE_SOURCES := examples/inspect_graph.cpp
 
