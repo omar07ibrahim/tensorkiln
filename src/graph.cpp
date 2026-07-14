@@ -153,10 +153,12 @@ GraphOutput::GraphOutput(const OutputId id, std::string name,
                          const ValueId value)
     : id_(id), name_(std::move(name)), value_(value) {}
 
-VerifiedGraph::VerifiedGraph(const std::uint64_t owner,
+VerifiedGraph::VerifiedGraph(const GraphLimits limits,
+                             const std::uint64_t owner,
                              std::vector<Node> nodes,
                              std::vector<GraphOutput> outputs)
-    : owner_(owner),
+    : limits_(limits),
+      owner_(owner),
       nodes_(std::move(nodes)),
       outputs_(std::move(outputs)) {}
 
@@ -454,7 +456,7 @@ Result<VerifiedGraph> GraphBuilder::finish() && {
 
   finished_ = true;
   return Result<VerifiedGraph>::success(
-      VerifiedGraph(owner_, std::move(nodes_), std::move(outputs_)));
+      VerifiedGraph(limits_, owner_, std::move(nodes_), std::move(outputs_)));
 }
 
 }  // namespace tensorkiln

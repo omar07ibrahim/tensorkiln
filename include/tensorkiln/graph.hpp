@@ -133,6 +133,9 @@ struct GraphLimits final {
   std::uint64_t max_constant_elements = UINT64_C(1) << 24U;
   ShapeLimits shape_limits{};
   TensorLimits tensor_limits{};
+
+  friend bool operator==(const GraphLimits&, const GraphLimits&) noexcept =
+      default;
 };
 
 class VerifiedGraph final {
@@ -147,6 +150,7 @@ class VerifiedGraph final {
   [[nodiscard]] std::span<const GraphOutput> outputs() const noexcept {
     return outputs_;
   }
+  [[nodiscard]] const GraphLimits& limits() const noexcept { return limits_; }
   [[nodiscard]] const Node* node(NodeId id) const noexcept;
   [[nodiscard]] const TensorType* type(ValueId value) const noexcept;
   [[nodiscard]] std::string dump() const;
@@ -154,9 +158,10 @@ class VerifiedGraph final {
  private:
   friend class GraphBuilder;
 
-  VerifiedGraph(std::uint64_t owner, std::vector<Node> nodes,
-                std::vector<GraphOutput> outputs);
+  VerifiedGraph(GraphLimits limits, std::uint64_t owner,
+                std::vector<Node> nodes, std::vector<GraphOutput> outputs);
 
+  GraphLimits limits_;
   std::uint64_t owner_;
   std::vector<Node> nodes_;
   std::vector<GraphOutput> outputs_;
