@@ -2,17 +2,17 @@
 
 [![CI][ci-badge]][ci-workflow]
 
-TensorKiln is a dependency-free C++20 project for compiling static `f32` tensor
-graphs into bounded, cache-aware CPU execution plans. The shipped front half
-verifies, reference-executes, and deterministically rewrites graphs. It also
-derives a storage-only lifetime projection from a graph, packs that projection,
-and accepts it only after an independent reverse reconstruction agrees. Layout
-lowering, kernels, and optimized execution are the next layers.
+TensorKiln is a dependency-free C++20 project building a bounded static `f32`
+tensor compiler/runtime. The shipped alpha verifies and reference-executes
+graphs, applies deterministic graph rewrites, and derives reverse-verified
+storage plans from graph lifetimes. Layout lowering, kernels, and cache-aware
+optimized execution are target layers, not current functionality.
 
-The project is a deliberately narrow C++20 compiler/runtime, built to make the
-hard parts inspectable: type and shape verification, deterministic graph
-rewrites, layout lowering, kernel selection, lifetime-based memory reuse, and
-differential validation against a separate reference interpreter.
+The project keeps one deliberately narrow compiler/runtime architecture small
+enough to inspect end to end. Its stable target covers type and shape
+verification, deterministic graph rewrites, layout lowering, kernel selection,
+lifetime-based memory reuse, and differential validation against a separate
+reference interpreter.
 
 > **Status:** the bounded type system, typed graph front-end, independent Python
 > oracle, bounded reference interpreter, and deterministic dead-code
@@ -20,8 +20,8 @@ differential validation against a separate reference interpreter.
 > available, together with graph-derived compute lifetimes, a deterministic
 > 64-byte interval arena planner, and independent reverse placement
 > verification. Fusion, layout lowering, alias and scratch lowering, kernels,
-> and the optimized executor remain under construction. The v0.1 contract
-> below is the target; **Available now** is the shipped subset.
+> and the optimized executor remain under construction. The stable v0.1.0
+> contract below is the target; **Available now** is the shipped subset.
 
 ## Why this exists
 
@@ -44,7 +44,7 @@ is evidence, not a production-runtime claim. Every eventual optimized result
 must agree with the unoptimized interpreter under a documented numerical
 policy, and every memory-plan claim must be derived from a verifiable plan.
 
-## v0.1 contract
+## Target v0.1.0 contract
 
 - C++20 and the standard library only.
 - Immutable, topologically ordered SSA graphs with static shapes.
@@ -128,8 +128,8 @@ specified in [the arena contract](docs/arena.md).
 
 ## Proof obligations
 
-The first release is complete only when the repository demonstrates all of the
-following:
+The stable v0.1.0 release is complete only when the repository demonstrates all
+of the following:
 
 1. malformed graphs fail before execution with stable, typed diagnostics;
 2. optimized and reference execution agree on golden, randomized, and
