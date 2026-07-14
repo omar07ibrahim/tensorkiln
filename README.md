@@ -95,8 +95,9 @@ make -j2 example
 make oracle
 ```
 
-The first command runs the strict dependency-free test suite. The second builds,
-prints, and reference-executes a small broadcast-add graph. The third proves
+The first command runs the strict dependency-free test suite. The second builds
+a graph with dead and duplicate work, prints the DCE/canonicalization pipeline,
+and verifies bit-exact reference output plus output aliases. The third proves
 that the committed golden fixture still matches the independent generator. See
 [the graph IR contract](docs/ir.md) for construction invariants and
 [the reference interpreter contract](docs/reference.md) for execution,
