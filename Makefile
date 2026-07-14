@@ -5,9 +5,10 @@ PROFILE ?= debug
 CXX_TAG := $(notdir $(firstword $(CXX)))
 BUILD_DIR := build/$(CXX_TAG)/$(PROFILE)
 
-LIB_SOURCES := src/diagnostic.cpp src/graph.cpp src/shape.cpp \
-               src/shape_inference.cpp src/tensor_type.cpp
-TEST_SOURCES := tests/test_graph.cpp tests/test_main.cpp tests/test_result.cpp \
+LIB_SOURCES := src/diagnostic.cpp src/graph.cpp src/reference.cpp \
+               src/shape.cpp src/shape_inference.cpp src/tensor_type.cpp
+TEST_SOURCES := tests/test_graph.cpp tests/test_main.cpp \
+                tests/test_reference.cpp tests/test_result.cpp \
                 tests/test_shape.cpp tests/test_shape_inference.cpp \
                 tests/test_tensor_type.cpp
 EXAMPLE_SOURCES := examples/inspect_graph.cpp
@@ -48,7 +49,7 @@ endif
 
 ARFLAGS := rcsD
 
-.PHONY: all test check sanitize example clean help
+.PHONY: all test check sanitize oracle example clean help
 
 all: $(LIBRARY) $(EXAMPLE_BINARY)
 
@@ -58,11 +59,15 @@ test: $(TEST_BINARY) $(EXAMPLE_BINARY)
 check:
 	$(MAKE) PROFILE=debug test
 	$(MAKE) PROFILE=release test
+	$(MAKE) oracle
 
 sanitize:
 	ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:strict_string_checks=1 \
 	UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
 	$(MAKE) PROFILE=sanitize test
+
+oracle:
+	python3 -I tools/oracle.py --check tests/oracle_fixture.hpp
 
 example: $(EXAMPLE_BINARY)
 	$(EXAMPLE_BINARY)
@@ -88,7 +93,7 @@ clean:
 	rm -rf build
 
 help:
-	@echo 'Targets: all test check sanitize example clean help'
+	@echo 'Targets: all test check sanitize oracle example clean help'
 	@echo 'Profiles: debug (default), release, sanitize'
 	@echo 'Example: make -j2 CXX=g++ PROFILE=release test'
 

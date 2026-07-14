@@ -51,6 +51,15 @@ TK_TEST("Error codes have stable names") {
       "broadcast_incompatible");
   TK_REQUIRE_EQ(tensorkiln::error_code_name(ErrorCode::byte_limit_exceeded),
                 "byte_limit_exceeded");
+  TK_REQUIRE_EQ(
+      tensorkiln::error_code_name(ErrorCode::input_binding_count_exceeded),
+      "input_binding_count_exceeded");
+  TK_REQUIRE_EQ(
+      tensorkiln::error_code_name(ErrorCode::unsupported_subnormal_mode),
+      "unsupported_subnormal_mode");
+  TK_REQUIRE_EQ(tensorkiln::error_code_name(
+                    ErrorCode::reference_scalar_step_limit_exceeded),
+                "reference_scalar_step_limit_exceeded");
 }
 
 }  // namespace

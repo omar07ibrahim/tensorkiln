@@ -44,6 +44,24 @@ std::string_view error_code_name(const ErrorCode code) noexcept {
       return "byte_count_overflow";
     case ErrorCode::byte_limit_exceeded:
       return "byte_limit_exceeded";
+    case ErrorCode::input_binding_count_exceeded:
+      return "input_binding_count_exceeded";
+    case ErrorCode::input_binding_unknown:
+      return "input_binding_unknown";
+    case ErrorCode::input_binding_duplicate:
+      return "input_binding_duplicate";
+    case ErrorCode::input_binding_missing:
+      return "input_binding_missing";
+    case ErrorCode::input_binding_size_mismatch:
+      return "input_binding_size_mismatch";
+    case ErrorCode::unsupported_rounding_mode:
+      return "unsupported_rounding_mode";
+    case ErrorCode::unsupported_subnormal_mode:
+      return "unsupported_subnormal_mode";
+    case ErrorCode::reference_materialization_limit_exceeded:
+      return "reference_materialization_limit_exceeded";
+    case ErrorCode::reference_scalar_step_limit_exceeded:
+      return "reference_scalar_step_limit_exceeded";
   }
   return "unknown_error";
 }

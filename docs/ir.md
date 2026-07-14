@@ -1,8 +1,9 @@
 # Typed graph IR
 
-This document describes the graph layer that exists today. It is intentionally
-smaller than the full v0.1 charter: execution, optimization passes, layouts,
-and arena allocation belong to later layers.
+This document describes the graph layer that exists today. Reference execution
+is specified separately in [the interpreter contract](reference.md).
+Optimization passes, lowered layouts, and arena allocation belong to later
+layers.
 
 ## Construction boundary
 

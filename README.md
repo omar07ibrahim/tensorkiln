@@ -10,10 +10,10 @@ hard parts inspectable: type and shape verification, deterministic graph
 rewrites, layout lowering, kernel selection, lifetime-based memory reuse, and
 differential validation against a separate reference interpreter.
 
-> **Status:** the bounded type system and typed graph front-end are available.
-> The reference interpreter, optimization passes, and execution-plan runtime
-> remain under construction. The v0.1 sections below describe the target, not
-> functionality that has already shipped.
+> **Status:** the bounded type system, typed graph front-end, independent Python
+> oracle, and bounded reference interpreter are available. Optimization passes
+> and the execution-plan runtime remain under construction. The v0.1 contract
+> below is the target; **Available now** is the shipped subset.
 
 ## Why this exists
 
@@ -64,7 +64,12 @@ The current vertical slice is small but executable:
   `Relu`;
 - owner-tagged handles that reject accidental cross-graph use;
 - immutable verified graphs with deterministic, golden-tested IR dumps;
-- graph-wide node, output, name, tensor, and cumulative constant-data limits.
+- graph-wide node, output, name, tensor, and cumulative constant-data limits;
+- an isolated contiguous reference interpreter with owner-safe result lookup,
+  exact payload/work ceilings, and fail-closed floating-point environment
+  checks;
+- bit-exact Python-stdlib fixtures consumed at real `MatMul -> Add -> Relu`
+  boundaries.
 
 Validation failures never consume an ID, reserve a name, or mutate resource
 counters. Constants own their exact IEEE-754 payload; the canonical dump uses a
@@ -73,11 +78,15 @@ stable bitwise fingerprint and does not depend on locale or pointer values.
 ```bash
 make -j2 test
 make -j2 example
+make oracle
 ```
 
-The first command runs the strict dependency-free test suite. The second builds
-and prints a small broadcast-add graph. See [the graph IR contract](docs/ir.md)
-for the current grammar and invariants.
+The first command runs the strict dependency-free test suite. The second builds,
+prints, and reference-executes a small broadcast-add graph. The third proves
+that the committed golden fixture still matches the independent generator. See
+[the graph IR contract](docs/ir.md) for construction invariants and
+[the reference interpreter contract](docs/reference.md) for execution,
+resource, lifetime, and numerical semantics.
 
 ## Proof obligations
 
