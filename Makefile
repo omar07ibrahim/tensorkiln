@@ -17,6 +17,7 @@ TEST_SOURCES := tests/test_arena_planner.cpp tests/test_arena_seeded.cpp \
                 tests/test_arena_verifier.cpp \
                 tests/test_dead_code_elimination.cpp tests/test_graph.cpp \
                 tests/test_graph_arena.cpp \
+                tests/test_graph_arena_seeded.cpp \
                 tests/test_main.cpp tests/test_reference.cpp \
                 tests/test_provenance.cpp tests/test_result.cpp \
                 tests/test_shape.cpp tests/test_shape_inference.cpp \
