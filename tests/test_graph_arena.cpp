@@ -3,19 +3,24 @@
 #include <array>
 #include <cstdint>
 #include <initializer_list>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "tensorkiln/dead_code_elimination.hpp"
 #include "tensorkiln/graph_arena.hpp"
+#include "../src/graph_arena_lowering_internal.hpp"
 
 namespace {
 
 using tensorkiln::ArenaLimits;
 using tensorkiln::ArenaAllocation;
 using tensorkiln::ArenaPlacement;
+using tensorkiln::ArenaPlanner;
 using tensorkiln::Diagnostic;
 using tensorkiln::ErrorCode;
+using tensorkiln::GraphArenaLowering;
 using tensorkiln::GraphArenaLoweringResult;
 using tensorkiln::GraphArenaPlacementVerifier;
 using tensorkiln::GraphBuilder;
@@ -61,6 +66,27 @@ template <typename T>
   return *allocation;
 }
 
+void require_plan_parity(const VerifiedGraph& graph,
+                         const GraphArenaLoweringResult& lowered,
+                         const ArenaLimits limits = ArenaLimits{}) {
+  const tensorkiln::ArenaPlan replanned =
+      unwrap(ArenaPlanner::run(lowered.requests(), limits));
+  TK_REQUIRE_EQ(replanned.dump(), lowered.arena_plan().dump());
+
+  std::vector<ArenaPlacement> placements;
+  placements.reserve(lowered.arena_plan().allocations().size());
+  for (const ArenaAllocation& allocation :
+       lowered.arena_plan().allocations()) {
+    placements.push_back(ArenaPlacement{
+        allocation.buffer_ordinal(),
+        allocation.offset_bytes(),
+    });
+  }
+  const GraphArenaLoweringResult reverified = unwrap(
+      GraphArenaPlacementVerifier::verify(graph, placements, limits));
+  TK_REQUIRE_EQ(reverified.dump(), lowered.dump());
+}
+
 [[nodiscard]] TensorType f32(
     const std::initializer_list<std::int64_t> extents) {
   return unwrap(TensorType::create(unwrap(Shape::create(extents))));
@@ -99,6 +125,43 @@ struct ChainFixture final {
   }};
 }
 
+struct MixedFixture final {
+  VerifiedGraph graph;
+  ValueId input;
+  ValueId weight;
+  ValueId product;
+  ValueId early;
+  ValueId bias;
+  ValueId dead;
+  ValueId result;
+};
+
+[[nodiscard]] MixedFixture make_mixed_graph() {
+  GraphBuilder builder;
+  const ValueId input = unwrap(builder.input("x", f32({1, 1})));
+  const std::array<float, 1U> weight_data{{2.0F}};
+  const ValueId weight =
+      unwrap(builder.constant("weight", f32({1, 1}), weight_data));
+  const ValueId product = unwrap(builder.matmul(input, weight));
+  const ValueId early = unwrap(builder.relu(product));
+  const std::array<float, 1U> bias_data{{1.0F}};
+  const ValueId bias =
+      unwrap(builder.constant("bias", f32({1, 1}), bias_data));
+  const ValueId dead = unwrap(builder.add(early, bias));
+  const ValueId result = unwrap(builder.add(product, bias));
+  static_cast<void>(unwrap(builder.output("result", result)));
+  return MixedFixture{
+      unwrap(std::move(builder).finish()),
+      input,
+      weight,
+      product,
+      early,
+      bias,
+      dead,
+      result,
+  };
+}
+
 TK_TEST("Graph arena verification accepts an external-only graph") {
   GraphBuilder builder;
   const ValueId input = unwrap(builder.input("x", f32({1})));
@@ -135,6 +198,29 @@ TK_TEST("Graph arena verification accepts an external-only graph") {
       "  stats {buffers=0, payload_bytes=0, reserved_bytes=0, "
       "peak_live_reserved_bytes=0, workspace_bytes=0}\n"
       "}\n");
+}
+
+TK_TEST("Graph arena lowering accepts an external-only graph at zero limits") {
+  GraphBuilder builder;
+  const ValueId input = unwrap(builder.input("x", f32({1})));
+  const std::array<float, 1U> constant_data{{2.0F}};
+  const ValueId constant =
+      unwrap(builder.constant("c", f32({1}), constant_data));
+  static_cast<void>(unwrap(builder.output("input_result", input)));
+  static_cast<void>(unwrap(builder.output("constant_result", constant)));
+  const VerifiedGraph graph = unwrap(std::move(builder).finish());
+
+  const ArenaLimits limits{0U, 0U};
+  const GraphArenaLoweringResult lowered =
+      unwrap(GraphArenaLowering::run(graph, limits));
+  TK_REQUIRE_EQ(lowered.source_node_count(), 2U);
+  TK_REQUIRE_EQ(lowered.execution_step_count(), 0U);
+  TK_REQUIRE(lowered.values_by_buffer_ordinal().empty());
+  TK_REQUIRE(lowered.requests().empty());
+  TK_REQUIRE(!lowered.buffer_ordinal(input).has_value());
+  TK_REQUIRE(!lowered.buffer_ordinal(constant).has_value());
+  TK_REQUIRE_EQ(lowered.arena_plan().workspace_bytes(), 0U);
+  require_plan_parity(graph, lowered, limits);
 }
 
 TK_TEST("Graph arena verification derives a canonical two-slot chain") {
@@ -193,6 +279,35 @@ TK_TEST("Graph arena verification derives a canonical two-slot chain") {
       "}\n");
 }
 
+TK_TEST("Graph arena lowering plans a canonical chain deterministically") {
+  const ChainFixture fixture = make_chain();
+  const ChainFixture equivalent = make_chain();
+  const std::string source_dump = fixture.graph.dump();
+
+  const GraphArenaLoweringResult first =
+      unwrap(GraphArenaLowering::run(fixture.graph));
+  const GraphArenaLoweringResult repeated =
+      unwrap(GraphArenaLowering::run(fixture.graph));
+  const GraphArenaLoweringResult separately_owned =
+      unwrap(GraphArenaLowering::run(equivalent.graph));
+
+  TK_REQUIRE_EQ(fixture.graph.dump(), source_dump);
+  TK_REQUIRE_EQ(first.dump(), repeated.dump());
+  TK_REQUIRE_EQ(first.dump(), separately_owned.dump());
+  TK_REQUIRE_EQ(first.requests()[0],
+                (tensorkiln::ArenaBufferRequest{64U, 0U, 2U}));
+  TK_REQUIRE_EQ(first.requests()[1],
+                (tensorkiln::ArenaBufferRequest{64U, 1U, 3U}));
+  TK_REQUIRE_EQ(first.requests()[2],
+                (tensorkiln::ArenaBufferRequest{64U, 2U, 3U}));
+  TK_REQUIRE_EQ(require_allocation(first, fixture.first).offset_bytes(), 0U);
+  TK_REQUIRE_EQ(require_allocation(first, fixture.second).offset_bytes(),
+                64U);
+  TK_REQUIRE_EQ(require_allocation(first, fixture.third).offset_bytes(), 0U);
+  TK_REQUIRE_EQ(first.arena_plan().workspace_bytes(), 128U);
+  require_plan_parity(fixture.graph, first);
+}
+
 TK_TEST("Graph arena verification retains outputs and includes dead compute") {
   GraphBuilder builder;
   const ValueId input = unwrap(builder.input("x", f32({16})));
@@ -230,6 +345,13 @@ TK_TEST("Graph arena verification retains outputs and includes dead compute") {
   TK_REQUIRE_EQ(require_allocation(lowered, result).offset_bytes(), 128U);
   TK_REQUIRE_EQ(lowered.arena_plan().stats().peak_live_reserved_bytes, 192U);
   TK_REQUIRE_EQ(lowered.arena_plan().workspace_bytes(), 192U);
+
+  const GraphArenaLoweringResult planned =
+      unwrap(GraphArenaLowering::run(graph));
+  TK_REQUIRE_EQ(planned.requests()[0],
+                (tensorkiln::ArenaBufferRequest{64U, 0U, 4U}));
+  TK_REQUIRE_EQ(planned.dump(), lowered.dump());
+  require_plan_parity(graph, planned);
 }
 
 TK_TEST("Graph arena verification keeps a value through its last fanout use") {
@@ -297,6 +419,145 @@ TK_TEST("Graph arena verification compacts MatMul steps around constants") {
   TK_REQUIRE(!lowered.buffer_ordinal(bias).has_value());
   TK_REQUIRE_EQ(lowered.arena_plan().stats().total_payload_bytes, 8U);
   TK_REQUIRE_EQ(lowered.arena_plan().stats().total_reserved_bytes, 128U);
+}
+
+TK_TEST("Graph arena lowering compacts constants and preserves MatMul fanout") {
+  const MixedFixture fixture = make_mixed_graph();
+  const GraphArenaLoweringResult lowered =
+      unwrap(GraphArenaLowering::run(fixture.graph));
+
+  TK_REQUIRE_EQ(lowered.source_node_count(), 7U);
+  TK_REQUIRE_EQ(lowered.execution_step_count(), 4U);
+  TK_REQUIRE_EQ(lowered.requests().size(), 4U);
+  TK_REQUIRE_EQ(lowered.requests()[0],
+                (tensorkiln::ArenaBufferRequest{4U, 0U, 4U}));
+  TK_REQUIRE_EQ(lowered.requests()[1],
+                (tensorkiln::ArenaBufferRequest{4U, 1U, 3U}));
+  TK_REQUIRE_EQ(lowered.requests()[2],
+                (tensorkiln::ArenaBufferRequest{4U, 2U, 3U}));
+  TK_REQUIRE_EQ(lowered.requests()[3],
+                (tensorkiln::ArenaBufferRequest{4U, 3U, 4U}));
+  TK_REQUIRE_EQ(require_buffer_ordinal(lowered, fixture.product), 0U);
+  TK_REQUIRE_EQ(require_buffer_ordinal(lowered, fixture.early), 1U);
+  TK_REQUIRE_EQ(require_buffer_ordinal(lowered, fixture.dead), 2U);
+  TK_REQUIRE_EQ(require_buffer_ordinal(lowered, fixture.result), 3U);
+  TK_REQUIRE(!lowered.buffer_ordinal(fixture.input).has_value());
+  TK_REQUIRE(!lowered.buffer_ordinal(fixture.weight).has_value());
+  TK_REQUIRE(!lowered.buffer_ordinal(fixture.bias).has_value());
+  TK_REQUIRE_EQ(require_allocation(lowered, fixture.product).offset_bytes(),
+                0U);
+  TK_REQUIRE_EQ(require_allocation(lowered, fixture.early).offset_bytes(),
+                64U);
+  TK_REQUIRE_EQ(require_allocation(lowered, fixture.dead).offset_bytes(),
+                128U);
+  TK_REQUIRE_EQ(require_allocation(lowered, fixture.result).offset_bytes(),
+                64U);
+  TK_REQUIRE_EQ(lowered.arena_plan().stats().peak_live_reserved_bytes, 192U);
+  TK_REQUIRE_EQ(lowered.arena_plan().workspace_bytes(), 192U);
+  require_plan_parity(fixture.graph, lowered);
+}
+
+TK_TEST("Graph arena lowering preserves exact arena limits") {
+  const ChainFixture fixture = make_chain();
+  const ArenaLimits exact_limits{3U, 128U};
+  const GraphArenaLoweringResult exact =
+      unwrap(GraphArenaLowering::run(fixture.graph, exact_limits));
+  TK_REQUIRE_EQ(exact.arena_plan().limits(), exact_limits);
+  TK_REQUIRE_EQ(exact.arena_plan().workspace_bytes(), 128U);
+
+  const auto bad_buffer_limit =
+      GraphArenaLowering::run(fixture.graph, ArenaLimits{2U, 128U});
+  TK_REQUIRE_EQ(
+      require_error(bad_buffer_limit,
+                    ErrorCode::arena_buffer_limit_exceeded)
+          .message,
+      "arena has 3 buffer requests; limit is 2");
+
+  const auto bad_workspace_limit =
+      GraphArenaLowering::run(fixture.graph, ArenaLimits{3U, 127U});
+  TK_REQUIRE_EQ(
+      require_error(bad_workspace_limit,
+                    ErrorCode::arena_workspace_limit_exceeded)
+          .message,
+      "arena workspace requires 128 bytes; limit is 127");
+}
+
+TK_TEST("Graph arena lowering reflects explicit DCE pass ordering") {
+  const MixedFixture fixture = make_mixed_graph();
+  const GraphArenaLoweringResult before =
+      unwrap(GraphArenaLowering::run(fixture.graph));
+  const tensorkiln::DeadCodeEliminationResult eliminated =
+      unwrap(tensorkiln::DeadCodeElimination::run(fixture.graph));
+  const GraphArenaLoweringResult after =
+      unwrap(GraphArenaLowering::run(eliminated.graph()));
+
+  TK_REQUIRE_EQ(before.source_node_count(), 7U);
+  TK_REQUIRE_EQ(before.requests().size(), 4U);
+  TK_REQUIRE_EQ(before.arena_plan().workspace_bytes(), 192U);
+  TK_REQUIRE_EQ(after.source_node_count(), 5U);
+  TK_REQUIRE_EQ(after.requests().size(), 2U);
+  TK_REQUIRE_EQ(after.arena_plan().workspace_bytes(), 128U);
+  TK_REQUIRE(eliminated.provenance().for_source(fixture.dead) == nullptr);
+
+  const tensorkiln::NodeProvenance* result_lineage =
+      eliminated.provenance().for_source(fixture.result);
+  TK_REQUIRE(result_lineage != nullptr);
+  TK_REQUIRE_EQ(require_buffer_ordinal(after, result_lineage->result_value()),
+                1U);
+  TK_REQUIRE(!after.buffer_ordinal(fixture.result).has_value());
+  require_plan_parity(eliminated.graph(), after);
+}
+
+TK_TEST("Graph arena lowering agreement rejects altered forward evidence") {
+  const ChainFixture fixture = make_chain();
+  const GraphArenaLoweringResult lowered =
+      unwrap(GraphArenaLowering::run(fixture.graph));
+
+  std::vector<ValueId> altered_values(
+      lowered.values_by_buffer_ordinal().begin(),
+      lowered.values_by_buffer_ordinal().end());
+  std::swap(altered_values[0], altered_values[1]);
+  const auto bad_mapping =
+      tensorkiln::detail::verify_graph_arena_lowering_agreement(
+          fixture.graph, altered_values, lowered.requests(),
+          lowered.execution_step_count(), lowered.arena_plan(),
+          lowered.arena_plan().limits());
+  TK_REQUIRE_EQ(
+      require_error(bad_mapping, ErrorCode::compiler_internal_invariant)
+          .message,
+      "graph arena forward and reverse value mappings disagree at #b0");
+
+  std::vector<tensorkiln::ArenaBufferRequest> altered_requests(
+      lowered.requests().begin(), lowered.requests().end());
+  altered_requests[0].live_end_step_exclusive = 3U;
+  const auto bad_request =
+      tensorkiln::detail::verify_graph_arena_lowering_agreement(
+          fixture.graph, lowered.values_by_buffer_ordinal(),
+          altered_requests, lowered.execution_step_count(),
+          lowered.arena_plan(), lowered.arena_plan().limits());
+  TK_REQUIRE_EQ(
+      require_error(bad_request, ErrorCode::compiler_internal_invariant)
+          .message,
+      "graph arena forward and reverse requests disagree at #b0");
+
+  const std::vector<tensorkiln::ArenaBufferRequest> disjoint_requests{
+      {64U, 0U, 1U},
+      {64U, 1U, 2U},
+      {64U, 2U, 3U},
+  };
+  const tensorkiln::ArenaPlan unsafe_for_graph =
+      unwrap(ArenaPlanner::run(disjoint_requests));
+  const auto bad_placements =
+      tensorkiln::detail::verify_graph_arena_lowering_agreement(
+          fixture.graph, lowered.values_by_buffer_ordinal(),
+          disjoint_requests, lowered.execution_step_count(),
+          unsafe_for_graph, unsafe_for_graph.limits());
+  TK_REQUIRE_EQ(
+      require_error(bad_placements, ErrorCode::compiler_internal_invariant)
+          .message,
+      "graph arena lowering failed reverse verification: arena_live_overlap: "
+      "arena buffers #b0 and #b1 overlap in bytes [0,64) and [0,64) while "
+      "lifetimes [0,2) and [1,3) intersect");
 }
 
 TK_TEST("Graph arena verification preserves arena diagnostic precedence") {

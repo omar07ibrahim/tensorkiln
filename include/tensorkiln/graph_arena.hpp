@@ -103,4 +103,23 @@ class GraphArenaPlacementVerifier final {
       ArenaLimits limits = ArenaLimits{});
 };
 
+class GraphArenaLowering final {
+ public:
+  GraphArenaLowering() = delete;
+
+  // Derives requests in a forward pass, applies the deterministic heuristic
+  // ArenaPlanner, and then requires an independent reverse reconstruction to
+  // accept and exactly match the planned storage projection. Arena resource
+  // and representability failures propagate unchanged because no placements
+  // exist; invalid derived requests and reverse disagreement are reported as
+  // compiler_internal_invariant. Allocation failure remains std::bad_alloc.
+  // A successful result proves placement safety, not optimality or execution.
+  //
+  // source is borrowed only for this call and must be a valid, non-moved-from
+  // VerifiedGraph. The returned artifact owns its mapping and arena plan.
+  [[nodiscard]] static Result<GraphArenaLoweringResult> run(
+      const VerifiedGraph& source,
+      ArenaLimits limits = ArenaLimits{});
+};
+
 }  // namespace tensorkiln

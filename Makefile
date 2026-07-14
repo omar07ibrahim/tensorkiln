@@ -9,6 +9,7 @@ LIB_SOURCES := src/arena.cpp src/arena_planner.cpp src/arena_support.cpp \
                src/arena_verifier.cpp src/compiler_support.cpp \
                src/dead_code_elimination.cpp \
                src/diagnostic.cpp src/graph.cpp src/graph_arena.cpp \
+               src/graph_arena_lowering.cpp \
                src/graph_arena_verifier.cpp src/provenance.cpp \
                src/reference.cpp src/shape.cpp src/shape_inference.cpp \
                src/structural_canonicalization.cpp src/tensor_type.cpp
