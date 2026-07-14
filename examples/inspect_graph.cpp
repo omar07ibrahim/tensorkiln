@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "tensorkiln/dead_code_elimination.hpp"
+#include "tensorkiln/graph_arena.hpp"
 #include "tensorkiln/reference.hpp"
 #include "tensorkiln/structural_canonicalization.hpp"
 
@@ -134,6 +135,59 @@ int main() {
     std::cout << "=== structural canonicalization ===\n"
               << canonicalized.dump();
     std::cout << "=== rewritten graph ===\n" << canonicalized.graph().dump();
+
+    const tensorkiln::GraphArenaLoweringResult storage =
+        unwrap(tensorkiln::GraphArenaLowering::run(
+            canonicalized.graph()));
+    constexpr std::array<tensorkiln::ArenaBufferRequest, 3U>
+        expected_requests{{
+            {24U, 0U, 2U},
+            {24U, 1U, 3U},
+            {24U, 2U, 3U},
+        }};
+    constexpr std::array<std::uint64_t, 3U> expected_offsets{{
+        0U,
+        64U,
+        0U,
+    }};
+    if (storage.source_node_count() != 5U ||
+        storage.execution_step_count() != expected_requests.size() ||
+        storage.requests().size() != expected_requests.size() ||
+        storage.values_by_buffer_ordinal().size() !=
+            expected_requests.size() ||
+        storage.buffer_ordinal(
+            canonicalized.graph().nodes()[0U].output()).has_value() ||
+        storage.buffer_ordinal(
+            canonicalized.graph().nodes()[1U].output()).has_value()) {
+      throw std::runtime_error(
+          "graph arena lowering produced an unexpected storage domain");
+    }
+    for (std::size_t index = 0U; index < expected_requests.size(); ++index) {
+      const tensorkiln::ArenaAllocation* allocation =
+          storage.arena_plan().allocation_at(
+              static_cast<std::uint32_t>(index));
+      if (storage.requests()[index] != expected_requests[index] ||
+          storage.values_by_buffer_ordinal()[index] !=
+              canonicalized.graph().nodes()[index + 2U].output() ||
+          allocation == nullptr ||
+          allocation->offset_bytes() != expected_offsets[index]) {
+        throw std::runtime_error(
+            "graph arena lowering changed the expected two-slot schedule");
+      }
+    }
+    const tensorkiln::ArenaPlanStats& storage_stats =
+        storage.arena_plan().stats();
+    if (storage_stats.total_payload_bytes != 72U ||
+        storage_stats.total_reserved_bytes != 192U ||
+        storage_stats.peak_live_reserved_bytes != 128U ||
+        storage_stats.workspace_bytes != 128U) {
+      throw std::runtime_error(
+          "graph arena lowering reported unexpected storage accounting");
+    }
+    std::cout << "=== reverse-verified graph arena storage projection ===\n"
+              << storage.dump();
+    std::cout << "verified: non-executable storage projection plans a "
+                 "128-byte workspace for 192 bytes of aligned reservations\n";
 
     const std::array<float, 6U> input_data{{
         -2.0F, 1.0F, 3.0F, -1.0F, 0.5F, -4.0F,

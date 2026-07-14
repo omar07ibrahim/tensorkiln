@@ -1,5 +1,6 @@
 #include "tensorkiln/graph.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <bit>
 #include <cstddef>
@@ -8,6 +9,7 @@
 #include <limits>
 #include <optional>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -30,6 +32,25 @@ inline constexpr std::uint64_t kFnvPrime = UINT64_C(1099511628211);
     std::terminate();
   }
   return owner;
+}
+
+template <typename T>
+void reserve_for_append(std::vector<T>& values,
+                        const std::size_t logical_max_size) {
+  if (values.size() < values.capacity()) {
+    return;
+  }
+  const std::size_t reserve_limit =
+      std::min(logical_max_size, values.max_size());
+  const std::size_t remaining = reserve_limit - values.size();
+  if (remaining == 0U) {
+    throw std::length_error(
+        "graph storage cannot represent another element");
+  }
+  const std::size_t preferred_growth =
+      values.empty() ? 1U : values.size();
+  const std::size_t growth = std::min(preferred_growth, remaining);
+  values.reserve(values.size() + growth);
 }
 
 [[nodiscard]] bool ascii_alpha(const char character) noexcept {
@@ -307,7 +328,9 @@ Result<ValueId> GraphBuilder::commit_node(Operation operation,
         node_limit_error(std::numeric_limits<std::uint32_t>::max()));
   }
 
-  nodes_.reserve(nodes_.size() + 1U);
+  // Reserve before consuming operation so allocation failure leaves the
+  // builder untouched, while geometric growth avoids quadratic relocation.
+  reserve_for_append(nodes_, static_cast<std::size_t>(limits_.max_nodes));
   const auto ordinal = static_cast<std::uint32_t>(nodes_.size());
   const ValueId value{ordinal, owner_};
   nodes_.push_back(Node(NodeId{ordinal, owner_}, std::move(operation),
@@ -461,7 +484,8 @@ Result<OutputId> GraphBuilder::output(std::string name, const ValueId value) {
     return Result<OutputId>::failure(output_limit_error(limits_.max_outputs));
   }
 
-  outputs_.reserve(outputs_.size() + 1U);
+  reserve_for_append(outputs_,
+                     static_cast<std::size_t>(limits_.max_outputs));
   const auto ordinal = static_cast<std::uint32_t>(outputs_.size());
   const OutputId id{ordinal};
   outputs_.push_back(GraphOutput(id, std::move(name), value));
