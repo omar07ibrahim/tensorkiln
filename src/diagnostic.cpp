@@ -66,6 +66,28 @@ std::string_view error_code_name(const ErrorCode code) noexcept {
       return "compiler_internal_invariant";
     case ErrorCode::provenance_domain_mismatch:
       return "provenance_domain_mismatch";
+    case ErrorCode::arena_buffer_limit_exceeded:
+      return "arena_buffer_limit_exceeded";
+    case ErrorCode::arena_buffer_size_invalid:
+      return "arena_buffer_size_invalid";
+    case ErrorCode::arena_lifetime_invalid:
+      return "arena_lifetime_invalid";
+    case ErrorCode::arena_placement_count_mismatch:
+      return "arena_placement_count_mismatch";
+    case ErrorCode::arena_placement_buffer_not_found:
+      return "arena_placement_buffer_not_found";
+    case ErrorCode::arena_placement_duplicate:
+      return "arena_placement_duplicate";
+    case ErrorCode::arena_alignment_invalid:
+      return "arena_alignment_invalid";
+    case ErrorCode::arena_size_overflow:
+      return "arena_size_overflow";
+    case ErrorCode::arena_live_overlap:
+      return "arena_live_overlap";
+    case ErrorCode::arena_workspace_limit_exceeded:
+      return "arena_workspace_limit_exceeded";
+    case ErrorCode::arena_workspace_unaddressable:
+      return "arena_workspace_unaddressable";
   }
   return "unknown_error";
 }
