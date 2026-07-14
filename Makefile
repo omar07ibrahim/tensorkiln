@@ -21,7 +21,7 @@ TEST_SOURCES := tests/test_arena_planner.cpp tests/test_arena_seeded.cpp \
                 tests/test_structural_canonicalization_contracts.cpp \
                 tests/test_structural_canonicalization_seeded.cpp \
                 tests/test_tensor_type.cpp
-EXAMPLE_SOURCES := examples/inspect_graph.cpp
+EXAMPLE_SOURCES := examples/inspect_graph.cpp examples/plan_arena.cpp
 
 LIB_OBJECTS := $(patsubst %.cpp,$(BUILD_DIR)/%.o,$(LIB_SOURCES))
 TEST_OBJECTS := $(patsubst %.cpp,$(BUILD_DIR)/%.o,$(TEST_SOURCES))
@@ -31,7 +31,8 @@ DEPENDENCIES := $(LIB_OBJECTS:.o=.d) $(TEST_OBJECTS:.o=.d) \
 
 LIBRARY := $(BUILD_DIR)/libtensorkiln.a
 TEST_BINARY := $(BUILD_DIR)/tensorkiln_tests
-EXAMPLE_BINARY := $(BUILD_DIR)/inspect_graph
+EXAMPLE_BINARIES := $(patsubst examples/%.cpp,$(BUILD_DIR)/%,\
+                    $(EXAMPLE_SOURCES))
 
 PROJECT_CPPFLAGS := -Iinclude -Itests -MMD -MP
 PROJECT_CXXFLAGS := -std=c++20 -Wall -Wextra -Wpedantic -Werror \
@@ -59,11 +60,11 @@ endif
 
 ARFLAGS := rcsD
 
-.PHONY: all test check sanitize oracle example clean help
+.PHONY: all test check sanitize oracle example run-examples clean help
 
-all: $(LIBRARY) $(EXAMPLE_BINARY)
+all: $(LIBRARY) $(EXAMPLE_BINARIES)
 
-test: $(TEST_BINARY) $(EXAMPLE_BINARY)
+test: $(TEST_BINARY) run-examples
 	$(TEST_BINARY)
 
 check:
@@ -79,8 +80,11 @@ sanitize:
 oracle:
 	python3 -I tools/oracle.py --check tests/oracle_fixture.hpp
 
-example: $(EXAMPLE_BINARY)
-	$(EXAMPLE_BINARY)
+example: run-examples
+
+run-examples: $(EXAMPLE_BINARIES)
+	$(BUILD_DIR)/inspect_graph
+	$(BUILD_DIR)/plan_arena
 
 $(LIBRARY): $(LIB_OBJECTS)
 	@mkdir -p $(dir $@)
@@ -90,9 +94,9 @@ $(TEST_BINARY): $(TEST_OBJECTS) $(LIBRARY)
 	@mkdir -p $(dir $@)
 	$(CXX) $(TEST_OBJECTS) $(LIBRARY) $(LDFLAGS) $(PROFILE_LDFLAGS) -o $@
 
-$(EXAMPLE_BINARY): $(EXAMPLE_OBJECTS) $(LIBRARY)
+$(EXAMPLE_BINARIES): $(BUILD_DIR)/%: $(BUILD_DIR)/examples/%.o $(LIBRARY)
 	@mkdir -p $(dir $@)
-	$(CXX) $(EXAMPLE_OBJECTS) $(LIBRARY) $(LDFLAGS) $(PROFILE_LDFLAGS) -o $@
+	$(CXX) $< $(LIBRARY) $(LDFLAGS) $(PROFILE_LDFLAGS) -o $@
 
 $(BUILD_DIR)/%.o: %.cpp
 	@mkdir -p $(dir $@)

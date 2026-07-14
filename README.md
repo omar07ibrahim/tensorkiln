@@ -4,8 +4,9 @@
 
 TensorKiln is a dependency-free C++20 project for compiling static `f32` tensor
 graphs into bounded, cache-aware CPU execution plans. The shipped front half
-verifies, reference-executes, and deterministically rewrites graphs; plan
-lowering and optimized execution are the next layers.
+verifies, reference-executes, and deterministically rewrites graphs. A
+standalone verified arena core now packs explicit buffer lifetimes; lowering
+graphs into plans and optimized execution are the next layers.
 
 The project is a deliberately narrow C++20 compiler/runtime, built to make the
 hard parts inspectable: type and shape verification, deterministic graph
@@ -15,9 +16,11 @@ differential validation against a separate reference interpreter.
 > **Status:** the bounded type system, typed graph front-end, independent Python
 > oracle, bounded reference interpreter, and deterministic dead-code
 > elimination and structural canonicalization with composable provenance are
-> available. Fusion, layout lowering, arena planning, kernels, and the optimized
-> executor remain under construction. The v0.1 contract below is the target;
-> **Available now** is the shipped subset.
+> available, together with a deterministic 64-byte interval arena planner and
+> independent placement verifier. Fusion, layout lowering, graph-to-arena
+> request derivation, kernels, and the optimized executor remain under
+> construction. The v0.1 contract below is the target; **Available now** is the
+> shipped subset.
 
 ## Why this exists
 
@@ -83,7 +86,13 @@ The current vertical slice is small but executable:
 - an output-alias guard that prevents equivalent source outputs from silently
   collapsing into one result value;
 - owner-safe, composable provenance with stable pass statistics and
-  deterministic dumps, including many-source-to-one-result lineage.
+  deterministic dumps, including many-source-to-one-result lineage;
+- a deterministic best-fit arena planner with 64-byte-aligned offsets for
+  explicit storage-root sizes and half-open lifetimes, with coalescing and
+  boundary reuse;
+- an independent placement verifier with checked arithmetic, exact workspace
+  accounting, canonical dumps, stable diagnostics, and seeded pairwise-oracle
+  coverage.
 
 Validation failures never consume an ID, reserve a name, or mutate resource
 counters. Constants own their exact IEEE-754 payload; the canonical dump uses a
@@ -95,16 +104,17 @@ make -j2 example
 make oracle
 ```
 
-The first command runs the strict dependency-free test suite. The second builds
-a graph with dead and duplicate work, prints the DCE/canonicalization pipeline,
-and verifies bit-exact reference output plus output aliases. The third proves
-that the committed golden fixture still matches the independent generator. See
+The first command runs the strict dependency-free test suite and smoke-executes
+both checked examples. The second prints the graph-rewrite pipeline and a
+verified 384-to-192-byte interval-reuse schedule. The third proves that the
+committed golden fixture still matches the independent generator. See
 [the graph IR contract](docs/ir.md) for construction invariants and
 [the reference interpreter contract](docs/reference.md) for execution,
 resource, lifetime, and numerical semantics. See
 [the compiler-pass contract](docs/compiler.md) for dead-code roots, semantic
 equivalence, exact canonicalization rules, output alias classes, provenance
-composition, and determinism.
+composition, and determinism. The standalone storage-placement boundary is
+specified in [the arena contract](docs/arena.md).
 
 ## Proof obligations
 
