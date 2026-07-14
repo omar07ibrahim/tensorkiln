@@ -44,3 +44,12 @@ sharing the numerical implementation under test is not.
 The currently executable operation-by-operation behavior, floating-point
 environment checks, special-value rules, and exact reference work accounting
 are specified in [the reference interpreter contract](reference.md).
+
+## Structural pass rule
+
+Dead-code elimination has no numerical tolerance. It neither replaces nor
+reorders live arithmetic, so successful source and rewritten executions with
+the same bindings must produce bit-identical outputs, including signed-zero and
+NaN payload bits. Reference resource counters and sticky exception flags from
+eliminated work are outside this equivalence boundary. See
+[the compiler-pass contract](compiler.md).

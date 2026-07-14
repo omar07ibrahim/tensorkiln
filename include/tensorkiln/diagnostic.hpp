@@ -36,6 +36,8 @@ enum class ErrorCode : std::uint8_t {
   unsupported_subnormal_mode,
   reference_materialization_limit_exceeded,
   reference_scalar_step_limit_exceeded,
+  compiler_internal_invariant,
+  provenance_domain_mismatch,
 };
 
 struct Diagnostic final {

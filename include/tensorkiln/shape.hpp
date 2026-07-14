@@ -17,6 +17,9 @@ inline constexpr std::uint64_t kDefaultMaxElements = UINT64_C(1) << 26U;
 
 struct ShapeLimits final {
   std::uint64_t max_elements = kDefaultMaxElements;
+
+  friend bool operator==(const ShapeLimits&, const ShapeLimits&) noexcept =
+      default;
 };
 
 class Shape final {

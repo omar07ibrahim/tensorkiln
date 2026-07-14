@@ -117,6 +117,23 @@ TK_TEST("Graph IDs are dense stable and topological") {
   TK_REQUIRE_EQ(add.output_type().to_string(), "f32[2,3]");
 }
 
+TK_TEST("Verified graph retains its exact construction limits") {
+  const GraphLimits limits{
+      17U,
+      3U,
+      11U,
+      19U,
+      ShapeLimits{23U},
+      TensorLimits{92U},
+  };
+  GraphBuilder builder(limits);
+  const ValueId input = require_value(builder.input("x", make_type({2})));
+  require_output(builder.output("result", input));
+  const VerifiedGraph graph = require_graph(std::move(builder).finish());
+
+  TK_REQUIRE_EQ(graph.limits(), limits);
+}
+
 TK_TEST("Failed Add is fully transactional") {
   GraphBuilder candidate;
   const ValueId left =

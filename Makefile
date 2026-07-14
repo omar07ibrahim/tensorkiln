@@ -5,12 +5,13 @@ PROFILE ?= debug
 CXX_TAG := $(notdir $(firstword $(CXX)))
 BUILD_DIR := build/$(CXX_TAG)/$(PROFILE)
 
-LIB_SOURCES := src/diagnostic.cpp src/graph.cpp src/reference.cpp \
-               src/shape.cpp src/shape_inference.cpp src/tensor_type.cpp
-TEST_SOURCES := tests/test_graph.cpp tests/test_main.cpp \
-                tests/test_reference.cpp tests/test_result.cpp \
-                tests/test_shape.cpp tests/test_shape_inference.cpp \
-                tests/test_tensor_type.cpp
+LIB_SOURCES := src/dead_code_elimination.cpp src/diagnostic.cpp \
+               src/graph.cpp src/reference.cpp src/shape.cpp \
+               src/shape_inference.cpp src/tensor_type.cpp
+TEST_SOURCES := tests/test_dead_code_elimination.cpp tests/test_graph.cpp \
+                tests/test_main.cpp tests/test_reference.cpp \
+                tests/test_result.cpp tests/test_shape.cpp \
+                tests/test_shape_inference.cpp tests/test_tensor_type.cpp
 EXAMPLE_SOURCES := examples/inspect_graph.cpp
 
 LIB_OBJECTS := $(patsubst %.cpp,$(BUILD_DIR)/%.o,$(LIB_SOURCES))

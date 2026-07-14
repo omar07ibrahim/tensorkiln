@@ -1,9 +1,10 @@
 # Typed graph IR
 
 This document describes the graph layer that exists today. Reference execution
-is specified separately in [the interpreter contract](reference.md).
-Optimization passes, lowered layouts, and arena allocation belong to later
-layers.
+is specified separately in [the interpreter contract](reference.md). The first
+graph-to-graph rewrite is specified in
+[the compiler-pass contract](compiler.md). Later canonicalization, fusion,
+lowered layouts, and arena allocation belong to later layers.
 
 ## Construction boundary
 
@@ -70,6 +71,11 @@ counter terminates before wraparound, so it cannot silently issue a duplicate
 token. `OutputId` has no cross-graph lookup API and therefore needs only its
 ordinal.
 
+A rewritten graph receives a fresh owner token. Source handles are therefore
+not valid in a compiler result even when their printed ordinals are unchanged;
+the pass-provided provenance map is the supported bridge between those owner
+domains.
+
 Definition names and output labels occupy separate namespaces. This permits a
 pass-through graph such as `output @x = %0` where `%0` is `input @x`. Within a
 namespace, names are unique and must match this ASCII grammar:
@@ -97,6 +103,10 @@ scheme.
 Zero is a valid ceiling and rejects the first corresponding resource. Exact
 boundaries are accepted. Checked arithmetic and semantic errors take precedence
 over a derived result's resource limit.
+
+A `VerifiedGraph` retains the exact `GraphLimits` under which it was built.
+Structural compiler passes replay surviving definitions with those same limits
+rather than silently substituting defaults.
 
 ## Canonical dump
 

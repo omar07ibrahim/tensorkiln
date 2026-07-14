@@ -11,9 +11,11 @@ rewrites, layout lowering, kernel selection, lifetime-based memory reuse, and
 differential validation against a separate reference interpreter.
 
 > **Status:** the bounded type system, typed graph front-end, independent Python
-> oracle, and bounded reference interpreter are available. Optimization passes
-> and the execution-plan runtime remain under construction. The v0.1 contract
-> below is the target; **Available now** is the shipped subset.
+> oracle, bounded reference interpreter, and deterministic dead-code
+> elimination with composable provenance are available. Additional
+> canonicalization and fusion passes, layout lowering, arena planning, kernels,
+> and the optimized executor remain under construction. The v0.1 contract below
+> is the target; **Available now** is the shipped subset.
 
 ## Why this exists
 
@@ -24,8 +26,8 @@ small enough to audit end to end:
 ```text
 GraphBuilder
     -> verify and infer
-    -> canonicalize and eliminate dead code
-    -> fuse safe epilogues
+    -> eliminate dead code
+    -> canonicalize and fuse safe epilogues
     -> lower layouts and select kernels
     -> plan one bounded arena
     -> execute without per-run heap allocation
@@ -69,7 +71,12 @@ The current vertical slice is small but executable:
   exact payload/work ceilings, and fail-closed floating-point environment
   checks;
 - bit-exact Python-stdlib fixtures consumed at real `MatMul -> Add -> Relu`
-  boundaries.
+  boundaries;
+- deterministic dead-code elimination that preserves the complete input
+  contract, output declaration order and aliases, exact source construction
+  limits, and bitwise constant payloads;
+- owner-safe, composable provenance with stable pass statistics and
+  deterministic dumps.
 
 Validation failures never consume an ID, reserve a name, or mutate resource
 counters. Constants own their exact IEEE-754 payload; the canonical dump uses a
@@ -86,7 +93,9 @@ prints, and reference-executes a small broadcast-add graph. The third proves
 that the committed golden fixture still matches the independent generator. See
 [the graph IR contract](docs/ir.md) for construction invariants and
 [the reference interpreter contract](docs/reference.md) for execution,
-resource, lifetime, and numerical semantics.
+resource, lifetime, and numerical semantics. See
+[the compiler-pass contract](docs/compiler.md) for dead-code roots, semantic
+equivalence, provenance composition, and determinism.
 
 ## Proof obligations
 

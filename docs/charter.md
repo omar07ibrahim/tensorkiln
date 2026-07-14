@@ -28,7 +28,8 @@ machine code.
 - Rank is in `[0, 4]`; rank zero denotes a scalar.
 - Extents are strictly positive. Element and byte counts use checked arithmetic
   and explicit resource ceilings.
-- The canonical printer is deterministic and includes node provenance.
+- The graph printer is deterministic and omits process-local owner tokens.
+  Compiler passes emit provenance in separate deterministic reports.
 
 These choices align with the parts of the
 [ONNX IR specification](https://onnx.ai/onnx/repo-docs/IR.html) that define a
@@ -70,6 +71,15 @@ graph. Compilation then performs, in order:
 6. liveness-based, 64-byte-aligned arena planning;
 7. independent verification of the resulting plan.
 
+This sequence is the v0.1 target. Dead-code elimination is the graph-to-graph
+stage available today; later stages remain under construction.
+
+Dead-code elimination treats every declared output and every `Input`
+definition as a root. It preserves the external feed schema, output declaration
+order and aliases, and stable relative order of surviving definitions. Its
+exact shipped guarantees are specified in
+[the compiler-pass contract](compiler.md).
+
 The graph IR describes logical tensors. The plan IR owns strides, aliases,
 kernel variants, arena offsets, scratch requirements, and source provenance.
 Keeping structured tensor semantics until after graph rewrites follows the
@@ -78,6 +88,9 @@ design direction documented by
 decisions mirrors the separation described by
 [MLIR Bufferization](https://mlir.llvm.org/docs/Bufferization/). TensorKiln does
 not link either project.
+
+Every graph-to-graph rewrite creates a fresh owner domain. Provenance is an
+explicit pass result rather than metadata embedded in the source graph dump.
 
 ## Execution boundary
 

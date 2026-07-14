@@ -17,6 +17,9 @@ inline constexpr std::uint64_t kDefaultMaxTensorBytes = UINT64_C(1) << 28U;
 
 struct TensorLimits final {
   std::uint64_t max_bytes = kDefaultMaxTensorBytes;
+
+  friend bool operator==(const TensorLimits&, const TensorLimits&) noexcept =
+      default;
 };
 
 class TensorType final {
