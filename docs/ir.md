@@ -4,8 +4,9 @@ This document describes the graph layer that exists today. Reference execution
 is specified separately in [the interpreter contract](reference.md). The
 available graph-to-graph rewrites are specified in
 [the compiler-pass contract](compiler.md). Dead-code elimination and structural
-canonicalization are available; fusion, lowered layouts, and arena allocation
-belong to later layers.
+canonicalization are available. The standalone interval-placement API is
+specified in [the arena contract](arena.md); fusion, lowered layouts,
+graph-to-arena request derivation, and execution belong to later layers.
 
 ## Construction boundary
 

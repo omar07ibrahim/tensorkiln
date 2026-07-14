@@ -38,6 +38,17 @@ enum class ErrorCode : std::uint8_t {
   reference_scalar_step_limit_exceeded,
   compiler_internal_invariant,
   provenance_domain_mismatch,
+  arena_buffer_limit_exceeded,
+  arena_buffer_size_invalid,
+  arena_lifetime_invalid,
+  arena_placement_count_mismatch,
+  arena_placement_buffer_not_found,
+  arena_placement_duplicate,
+  arena_alignment_invalid,
+  arena_size_overflow,
+  arena_live_overlap,
+  arena_workspace_limit_exceeded,
+  arena_workspace_unaddressable,
 };
 
 struct Diagnostic final {

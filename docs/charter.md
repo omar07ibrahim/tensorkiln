@@ -75,8 +75,13 @@ graph. Compilation then performs, in order:
 8. independent verification of the resulting plan.
 
 This sequence is the v0.1 target. Dead-code elimination and exact structural
-canonicalization are the graph-to-graph stages available today; later stages
-remain under construction.
+canonicalization are the graph-to-graph stages available today. The standalone
+interval-placement core for stage 7 and its placement verifier are also
+available: they consume caller-supplied storage-root sizes and lifetimes, but do
+not derive them from a `VerifiedGraph` or lowered plan. Fusion, layout lowering,
+kernel selection, graph-to-arena request derivation, alias proof, scratch
+integration, and optimized execution remain under construction. The shipped
+storage boundary is specified in [the arena contract](arena.md).
 
 Dead-code elimination treats every declared output and every `Input`
 definition as a root. It preserves the external feed schema, output declaration

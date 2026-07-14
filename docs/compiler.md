@@ -5,8 +5,10 @@ elimination and structural canonicalization. Each accepts only a
 `VerifiedGraph`, produces a new verified graph in a fresh owner domain, and
 returns explicit provenance and accounting for the rewrite.
 
-Fusion, layout lowering, kernel selection, arena planning, and optimized
-execution remain later layers.
+Fusion, layout lowering, kernel selection, graph-to-arena request derivation,
+and optimized execution remain later layers. A standalone interval arena
+planner and placement verifier are available separately; they are not
+graph-to-graph rewrites and are specified in [the arena contract](arena.md).
 
 ## Public boundary
 
