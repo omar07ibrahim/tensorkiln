@@ -4,14 +4,16 @@ This document is the scope boundary for the first public release. A feature is
 not part of v0.1 merely because it would be useful; it must fit the invariants
 and proof plan below.
 
-## Product claim
+## Target product claim
 
-TensorKiln is an educational but rigorous static tensor-graph compiler and CPU
-runtime. It accepts a small programmatic graph, rejects invalid programs,
-derives all result types, compiles valid graphs into explicit execution plans,
-and runs those plans inside a preallocated workspace.
+At v0.1 completion, TensorKiln will be an educational but rigorous static
+tensor-graph compiler and CPU runtime. It will accept a small programmatic
+graph, reject invalid programs, derive all result types, compile valid graphs
+into explicit execution plans, and run those plans inside a preallocated
+workspace. The currently shipped graph front-end, reference interpreter, and
+graph rewrites are listed in the README.
 
-It is a graph compiler because it owns and tests semantic verification,
+It qualifies as a graph compiler by owning and testing semantic verification,
 whole-graph rewrites, layout decisions, kernel selection, and storage planning.
 It is not a JIT: v0.1 selects precompiled C++ kernels rather than emitting
 machine code.
@@ -64,21 +66,29 @@ Verification produces a `VerifiedGraph`; no executor accepts an unverified
 graph. Compilation then performs, in order:
 
 1. dead-code elimination with stable surviving-node order;
-2. idempotent reshape/transpose canonicalization;
-3. conservative, single-use `MatMul` epilogue fusion;
-4. layout lowering with explicit materialization when a view is unsafe;
-5. deterministic kernel selection and constant-RHS prepacking;
-6. liveness-based, 64-byte-aligned arena planning;
-7. independent verification of the resulting plan.
+2. exact structural CSE and redundant-ReLU canonicalization;
+3. idempotent reshape/transpose canonicalization;
+4. conservative, single-use `MatMul` epilogue fusion;
+5. layout lowering with explicit materialization when a view is unsafe;
+6. deterministic kernel selection and constant-RHS prepacking;
+7. liveness-based, 64-byte-aligned arena planning;
+8. independent verification of the resulting plan.
 
-This sequence is the v0.1 target. Dead-code elimination is the graph-to-graph
-stage available today; later stages remain under construction.
+This sequence is the v0.1 target. Dead-code elimination and exact structural
+canonicalization are the graph-to-graph stages available today; later stages
+remain under construction.
 
 Dead-code elimination treats every declared output and every `Input`
 definition as a root. It preserves the external feed schema, output declaration
 order and aliases, and stable relative order of surviving definitions. Its
 exact shipped guarantees are specified in
 [the compiler-pass contract](compiler.md).
+
+Structural canonicalization performs only exact `Add`, `MatMul`, and `Relu`
+common-subexpression elimination plus redundant-ReLU removal. It preserves
+output alias classes and does not apply algebraic identities or floating-point
+reassociation. Its exact shipped guarantees are specified in the same
+compiler-pass contract.
 
 The graph IR describes logical tensors. The plan IR owns strides, aliases,
 kernel variants, arena offsets, scratch requirements, and source provenance.
