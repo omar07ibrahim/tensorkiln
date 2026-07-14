@@ -18,7 +18,8 @@ std::array<tensorkiln::InputBinding, 1> bindings{{
 
 auto executed = tensorkiln::ReferenceInterpreter::run(graph, bindings);
 if (executed.error_if() != nullptr) {
-  // Handle the typed diagnostic.
+  report(*executed.error_if());
+  return;
 }
 
 tensorkiln::ReferenceResult result =
@@ -53,8 +54,8 @@ Execution has a stable, phase-based diagnostic order:
 3. reject the first duplicate known name in binding order;
 4. reject the first missing input in graph order;
 5. reject the first wrong-sized input in graph order;
-6. require round-to-nearest and gradual `f32` underflow without changing the
-   process floating-point environment;
+6. require round-to-nearest and gradual `f32` underflow without changing those
+   floating-point control modes;
 7. check aggregate materialized payload in graph order;
 8. check aggregate scalar-step work in graph order;
 9. allocate node payloads and evaluate topologically.
@@ -98,8 +99,10 @@ following hold:
 - the active rounding mode is `FE_TONEAREST`;
 - runtime sentinels confirm gradual `f32` underflow, rejecting FTZ/DAZ modes.
 
-The interpreter observes but never mutates the caller's floating-point
-environment.
+The interpreter does not change rounding or subnormal control modes. Like
+ordinary floating-point code, graph arithmetic and the underflow sentinels may
+set sticky exception status flags such as inexact, underflow, overflow, or
+invalid.
 
 | Operation | Reference behavior |
 | --- | --- |

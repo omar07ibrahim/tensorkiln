@@ -277,6 +277,40 @@ TK_TEST("Reference Add right-aligns operands with different ranks") {
                      expected);
 }
 
+TK_TEST("Reference Add executes scalars and broadcasts them to tensors") {
+  GraphBuilder builder;
+  const ValueId left = require_value(builder.input("left", make_type({})));
+  const ValueId right = require_value(builder.input("right", make_type({})));
+  const ValueId scalar_sum = require_value(builder.add(left, right));
+  const ValueId matrix =
+      require_value(builder.input("matrix", make_type({2, 2})));
+  const ValueId shifted = require_value(builder.add(matrix, scalar_sum));
+  require_output(builder.output("scalar", scalar_sum));
+  require_output(builder.output("shifted", shifted));
+  const VerifiedGraph graph = require_graph(std::move(builder).finish());
+
+  const std::array<float, 1U> left_data{{1.5F}};
+  const std::array<float, 1U> right_data{{2.0F}};
+  const std::array<float, 4U> matrix_data{{-3.0F, 0.0F, 1.0F, 2.0F}};
+  const std::array<float, 1U> expected_scalar{{3.5F}};
+  const std::array<float, 4U> expected_shifted{{0.5F, 3.5F, 4.5F, 5.5F}};
+  const std::array<InputBinding, 3U> bindings{{
+      InputBinding{"left", left_data},
+      InputBinding{"right", right_data},
+      InputBinding{"matrix", matrix_data},
+  }};
+  const ReferenceResult result =
+      require_result(ReferenceInterpreter::run(graph, bindings));
+
+  const Tensor& scalar = require_output_tensor(result, "scalar");
+  TK_REQUIRE(scalar.type().shape().is_scalar());
+  require_bits_equal(scalar.data(), expected_scalar);
+  require_bits_equal(require_output_tensor(result, "shifted").data(),
+                     expected_shifted);
+  TK_REQUIRE_EQ(result.materialized_bytes(), 44U);
+  TK_REQUIRE_EQ(result.scalar_steps(), 11U);
+}
+
 TK_TEST("Reference MatMul broadcasts independent rank-four batches") {
   GraphBuilder builder;
   const ValueId left =
@@ -435,7 +469,7 @@ TK_TEST("Reference limits accept exact payload and scalar-step boundaries") {
                 ErrorCode::reference_materialization_limit_exceeded);
 }
 
-TK_TEST("Reference interpreter rejects non-nearest rounding without mutation") {
+TK_TEST("Reference interpreter rejects rounding without changing its mode") {
   GraphBuilder builder;
   const std::array<float, 1U> constant_data{{1.0F}};
   const ValueId constant = require_value(
