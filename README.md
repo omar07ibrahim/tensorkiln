@@ -9,7 +9,7 @@ storage plans from graph lifetimes. Layout lowering, kernels, and cache-aware
 optimized execution are target layers, not current functionality.
 
 The project keeps one deliberately narrow compiler/runtime architecture small
-enough to inspect end to end. Its stable target covers type and shape
+enough to inspect end to end. Its v0.1.0 target covers type and shape
 verification, deterministic graph rewrites, layout lowering, kernel selection,
 lifetime-based memory reuse, and differential validation against a separate
 reference interpreter.
@@ -20,8 +20,8 @@ reference interpreter.
 > available, together with graph-derived compute lifetimes, a deterministic
 > 64-byte interval arena planner, and independent reverse placement
 > verification. Fusion, layout lowering, alias and scratch lowering, kernels,
-> and the optimized executor remain under construction. The stable v0.1.0
-> contract below is the target; **Available now** is the shipped subset.
+> and the optimized executor remain under construction. The non-prerelease
+> v0.1.0 contract below is the target; **Available now** is the shipped subset.
 
 ## Why this exists
 
@@ -113,10 +113,11 @@ make -j2 example
 make oracle
 ```
 
-TensorKiln v0.1.0-alpha.1 is a source-only milestone with an unstable
-prerelease API. It is tested on Ubuntu 24.04 with GCC 14 and Clang 18; no
+TensorKiln v0.1.0-alpha.1 is a source-only milestone with an experimental 0.x
+API. It is tested on Ubuntu 24.04 with GCC 14 and Clang 18; no
 installable package or binary distribution is provided. Version tags are the
-authoritative version source. See the
+authoritative version source, and no compatibility boundary is promised before
+v1.0.0. See the
 [alpha release notes](docs/releases/v0.1.0-alpha.1.md) and
 [changelog](CHANGELOG.md) for the shipped boundary and known limitations.
 
@@ -135,8 +136,8 @@ specified in [the arena contract](docs/arena.md).
 
 ## Proof obligations
 
-The stable v0.1.0 release is complete only when the repository demonstrates all
-of the following:
+The non-prerelease v0.1.0 milestone is complete only when the repository
+demonstrates all of the following:
 
 1. malformed graphs fail before execution with stable, typed diagnostics;
 2. optimized and reference execution agree on golden, randomized, and

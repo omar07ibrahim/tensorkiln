@@ -1,13 +1,13 @@
-# TensorKiln stable v0.1.0 charter
+# TensorKiln v0.1.0 target charter
 
-This document is the scope boundary for the stable v0.1.0 target. A feature is
-not part of that target merely because it would be useful; it must fit the
-invariants and proof plan below.
+This document is the scope boundary for the non-prerelease v0.1.0 target. A
+feature is not part of that target merely because it would be useful; it must
+fit the invariants and proof plan below.
 
 ## Target product claim
 
-At stable v0.1.0 completion, TensorKiln will be an educational but rigorous
-static tensor-graph compiler and CPU runtime. It will accept a small
+When the v0.1.0 target is complete, TensorKiln will be an educational but
+rigorous static tensor-graph compiler and CPU runtime. It will accept a small
 programmatic graph, reject invalid programs, derive all result types, compile
 valid graphs into explicit execution plans, and run those plans inside a
 preallocated workspace. The currently shipped graph front-end, reference
@@ -115,7 +115,7 @@ explicit pass result rather than metadata embedded in the source graph dump.
 
 The alpha ships a reference interpreter that executes the verified source graph
 and allocates a distinct contiguous result for every node. The items below
-describe the stable v0.1.0 optimized-execution target and are not available in
+describe the v0.1.0 optimized-execution target and are not available in
 v0.1.0-alpha.1:
 
 - the optimized executor runs a verified plan in an aligned workspace;

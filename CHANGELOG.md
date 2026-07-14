@@ -1,12 +1,13 @@
 # Changelog
 
 This file records user-visible TensorKiln milestones. Git tags are the
-authoritative version source. Versions follow Semantic Versioning; APIs and
-serialized diagnostic or dump formats may change between prereleases.
+authoritative version source. Versions follow Semantic Versioning. Public APIs
+may change throughout 0.x, and serialized diagnostic or dump formats may change
+between prereleases.
 
 ## [Unreleased]
 
-Work toward the stable v0.1.0 compiler and optimized-execution contract remains
+Work toward the v0.1.0 compiler and optimized-execution contract remains
 in progress.
 
 ## [0.1.0-alpha.1] - 2026-07-14
@@ -42,7 +43,8 @@ planning boundary. It is not an optimized tensor runtime.
 - there are no performance benchmarks or cache-performance claims;
 - the supported distribution is source only, built from the repository root
   with GNU Make on the tested Ubuntu toolchain matrix;
-- public APIs are unstable until the stable v0.1.0 contract is complete.
+- public APIs may change throughout 0.x; no compatibility boundary is promised
+  before v1.0.0.
 
 [Unreleased]: https://github.com/omar07ibrahim/tensorkiln/compare/v0.1.0-alpha.1...HEAD
 [0.1.0-alpha.1]: https://github.com/omar07ibrahim/tensorkiln/releases/tag/v0.1.0-alpha.1
