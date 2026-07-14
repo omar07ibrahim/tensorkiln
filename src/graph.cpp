@@ -9,6 +9,7 @@
 #include <limits>
 #include <optional>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -35,11 +36,17 @@ inline constexpr std::uint64_t kFnvPrime = UINT64_C(1099511628211);
 
 template <typename T>
 void reserve_for_append(std::vector<T>& values,
-                        const std::size_t max_size) {
+                        const std::size_t logical_max_size) {
   if (values.size() < values.capacity()) {
     return;
   }
-  const std::size_t remaining = max_size - values.size();
+  const std::size_t reserve_limit =
+      std::min(logical_max_size, values.max_size());
+  const std::size_t remaining = reserve_limit - values.size();
+  if (remaining == 0U) {
+    throw std::length_error(
+        "graph storage cannot represent another element");
+  }
   const std::size_t preferred_growth =
       values.empty() ? 1U : values.size();
   const std::size_t growth = std::min(preferred_growth, remaining);
