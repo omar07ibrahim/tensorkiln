@@ -62,6 +62,10 @@ std::string_view error_code_name(const ErrorCode code) noexcept {
       return "reference_materialization_limit_exceeded";
     case ErrorCode::reference_scalar_step_limit_exceeded:
       return "reference_scalar_step_limit_exceeded";
+    case ErrorCode::compiler_internal_invariant:
+      return "compiler_internal_invariant";
+    case ErrorCode::provenance_domain_mismatch:
+      return "provenance_domain_mismatch";
   }
   return "unknown_error";
 }
