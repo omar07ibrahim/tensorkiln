@@ -113,6 +113,13 @@ make -j2 example
 make oracle
 ```
 
+TensorKiln v0.1.0-alpha.1 is a source-only milestone with an unstable
+prerelease API. It is tested on Ubuntu 24.04 with GCC 14 and Clang 18; no
+installable package or binary distribution is provided. Version tags are the
+authoritative version source. See the
+[alpha release notes](docs/releases/v0.1.0-alpha.1.md) and
+[changelog](CHANGELOG.md) for the shipped boundary and known limitations.
+
 The first command runs the strict dependency-free test suite and smoke-executes
 both checked examples. The second prints the graph-rewrite pipeline, its
 non-executable 192-to-128-byte graph storage projection, and a standalone
