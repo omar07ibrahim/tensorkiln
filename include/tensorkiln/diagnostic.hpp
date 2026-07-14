@@ -27,6 +27,15 @@ enum class ErrorCode : std::uint8_t {
   unsupported_element_type,
   byte_count_overflow,
   byte_limit_exceeded,
+  input_binding_count_exceeded,
+  input_binding_unknown,
+  input_binding_duplicate,
+  input_binding_missing,
+  input_binding_size_mismatch,
+  unsupported_rounding_mode,
+  unsupported_subnormal_mode,
+  reference_materialization_limit_exceeded,
+  reference_scalar_step_limit_exceeded,
 };
 
 struct Diagnostic final {
