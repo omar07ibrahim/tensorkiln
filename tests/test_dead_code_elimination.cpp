@@ -10,6 +10,7 @@
 #include <string_view>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include "tensorkiln/dead_code_elimination.hpp"
 #include "tensorkiln/reference.hpp"
@@ -120,6 +121,25 @@ void require_bits_equal(const std::span<const float> left,
 struct InterleavedFixture final {
   VerifiedGraph graph;
   std::array<ValueId, 10U> values;
+};
+
+class DeterministicGenerator final {
+ public:
+  explicit DeterministicGenerator(const std::uint32_t seed) noexcept
+      : state_(seed) {}
+
+  [[nodiscard]] std::uint32_t next() noexcept {
+    state_ = state_ * UINT32_C(1664525) + UINT32_C(1013904223);
+    return state_;
+  }
+
+  [[nodiscard]] std::size_t index(const std::size_t bound) noexcept {
+    return static_cast<std::size_t>(
+        next() % static_cast<std::uint32_t>(bound));
+  }
+
+ private:
+  std::uint32_t state_;
 };
 
 [[nodiscard]] InterleavedFixture build_interleaved_fixture() {
@@ -448,6 +468,90 @@ TK_TEST("DCE is idempotent and composes lineage back to the original graph") {
                   fixture.graph.nodes()[source_index].id());
     TK_REQUIRE_EQ(entry->sources()[0].value(),
                   fixture.graph.nodes()[source_index].output());
+  }
+}
+
+TK_TEST("DCE is deterministic and bit-exact across seeded scalar DAGs") {
+  constexpr std::uint32_t kCaseCount = 48U;
+  constexpr std::size_t kGeneratedDefinitions = 24U;
+
+  for (std::uint32_t case_index = 0U; case_index < kCaseCount;
+       ++case_index) {
+    DeterministicGenerator generator(
+        UINT32_C(0x5eed1234) ^ (case_index * UINT32_C(0x9e3779b9)));
+    GraphBuilder builder;
+    const TensorType scalar_type = make_type({});
+    const ValueId x = require_value(builder.input("x", scalar_type));
+    const ValueId y = require_value(builder.input("y", scalar_type));
+    std::vector<ValueId> values{x, y};
+    values.reserve(2U + kGeneratedDefinitions);
+
+    for (std::size_t step = 0U; step < kGeneratedDefinitions; ++step) {
+      const std::uint32_t selector = generator.next() % 4U;
+      ValueId generated = x;
+      if (selector == 0U) {
+        const std::int32_t numerator =
+            static_cast<std::int32_t>(generator.next() % 2049U) - 1024;
+        const std::array<float, 1U> data{{
+            static_cast<float>(numerator) / 64.0F,
+        }};
+        generated = require_value(builder.constant(
+            "c_" + std::to_string(step), scalar_type, data));
+      } else if (selector == 1U) {
+        generated =
+            require_value(builder.relu(values[generator.index(values.size())]));
+      } else {
+        const ValueId left = values[generator.index(values.size())];
+        const ValueId right = (generator.next() & 3U) == 0U
+                                  ? left
+                                  : values[generator.index(values.size())];
+        generated = require_value(builder.add(left, right));
+      }
+      values.push_back(generated);
+    }
+
+    const ValueId result = values[2U + generator.index(14U)];
+    require_output(builder.output("result", result));
+    require_output(builder.output("alias", result));
+    const VerifiedGraph source = require_graph(std::move(builder).finish());
+
+    const DeadCodeEliminationResult first =
+        require_dce(DeadCodeElimination::run(source));
+    const DeadCodeEliminationResult second =
+        require_dce(DeadCodeElimination::run(source));
+    TK_REQUIRE(first.stats().removed_nodes >= 10U);
+    TK_REQUIRE_EQ(first.stats(), second.stats());
+    TK_REQUIRE_EQ(first.graph().dump(), second.graph().dump());
+    TK_REQUIRE_EQ(first.provenance().dump(), second.provenance().dump());
+    TK_REQUIRE_EQ(first.dump(), second.dump());
+
+    const std::array<float, 1U> x_data{{
+        static_cast<float>(case_index) / 16.0F - 1.25F,
+    }};
+    const std::array<float, 1U> y_data{{
+        0.75F - static_cast<float>(case_index) / 32.0F,
+    }};
+    const std::array<InputBinding, 2U> bindings{{
+        InputBinding{"x", x_data},
+        InputBinding{"y", y_data},
+    }};
+    const ReferenceResult source_result =
+        require_reference(ReferenceInterpreter::run(source, bindings));
+    const ReferenceResult optimized_result = require_reference(
+        ReferenceInterpreter::run(first.graph(), bindings));
+
+    const Tensor& source_output =
+        require_output_tensor(source_result, "result");
+    const Tensor& optimized_output =
+        require_output_tensor(optimized_result, "result");
+    TK_REQUIRE_EQ(optimized_output.type(), source_output.type());
+    require_bits_equal(optimized_output.data(), source_output.data());
+    TK_REQUIRE(source_result.output("result") == source_result.output("alias"));
+    TK_REQUIRE(optimized_result.output("result") ==
+               optimized_result.output("alias"));
+    TK_REQUIRE(optimized_result.materialized_bytes() <
+               source_result.materialized_bytes());
+    TK_REQUIRE(optimized_result.scalar_steps() < source_result.scalar_steps());
   }
 }
 
