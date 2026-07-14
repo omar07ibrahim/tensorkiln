@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -61,6 +62,81 @@ NodeProvenance::NodeProvenance(const NodeId result_node,
 GraphProvenance::GraphProvenance(std::vector<NodeProvenance> entries)
     : entries_(std::move(entries)) {}
 
+Result<GraphProvenance> GraphProvenance::create(
+    const VerifiedGraph& result_graph, const VerifiedGraph& source_graph,
+    std::vector<std::vector<NodeId>> source_nodes_by_result) {
+  if (source_nodes_by_result.size() != result_graph.nodes().size()) {
+    return Result<GraphProvenance>::failure(provenance_error(
+        "provenance map has " +
+        std::to_string(source_nodes_by_result.size()) +
+        " result entries; expected " +
+        std::to_string(result_graph.nodes().size())));
+  }
+
+  std::vector<std::optional<std::size_t>> assigned_result(
+      source_graph.nodes().size());
+  std::vector<NodeProvenance> entries;
+  entries.reserve(result_graph.nodes().size());
+
+  for (std::size_t result_index = 0U;
+       result_index < result_graph.nodes().size(); ++result_index) {
+    const Node& result_definition = result_graph.nodes()[result_index];
+    std::vector<NodeId>& source_nodes =
+        source_nodes_by_result[result_index];
+    if (source_nodes.empty()) {
+      return Result<GraphProvenance>::failure(provenance_error(
+          "result " + node_label(result_definition.id()) +
+          " has no source definitions"));
+    }
+
+    for (const NodeId source_node : source_nodes) {
+      if (source_graph.node(source_node) == nullptr) {
+        return Result<GraphProvenance>::failure(provenance_error(
+            "source " + node_label(source_node) +
+            " does not belong to the declared source graph"));
+      }
+    }
+    std::stable_sort(
+        source_nodes.begin(), source_nodes.end(),
+        [](const NodeId left, const NodeId right) {
+          return left.ordinal() < right.ordinal();
+        });
+    source_nodes.erase(
+        std::unique(source_nodes.begin(), source_nodes.end()),
+        source_nodes.end());
+
+    std::vector<SourceDefinition> sources;
+    sources.reserve(source_nodes.size());
+    for (const NodeId source_node_id : source_nodes) {
+      const Node* source_definition = source_graph.node(source_node_id);
+      if (source_definition == nullptr) {
+        return Result<GraphProvenance>::failure(provenance_error(
+            "source domain changed during provenance construction"));
+      }
+      const std::size_t source_index =
+          static_cast<std::size_t>(source_node_id.ordinal());
+      if (assigned_result[source_index].has_value()) {
+        const Node& previous_result = result_graph.nodes()[
+            *assigned_result[source_index]];
+        return Result<GraphProvenance>::failure(provenance_error(
+            "source " + node_label(source_node_id) +
+            " is assigned to both " +
+            node_label(previous_result.id()) + " and " +
+            node_label(result_definition.id())));
+      }
+      assigned_result[source_index] = result_index;
+      sources.push_back(SourceDefinition(source_definition->id(),
+                                         source_definition->output()));
+    }
+    entries.push_back(NodeProvenance(
+        result_definition.id(), result_definition.output(),
+        std::move(sources)));
+  }
+
+  return Result<GraphProvenance>::success(
+      GraphProvenance(std::move(entries)));
+}
+
 const NodeProvenance* GraphProvenance::for_result(
     const NodeId node) const noexcept {
   const std::size_t index = static_cast<std::size_t>(node.ordinal());
@@ -107,6 +183,7 @@ Result<GraphProvenance> GraphProvenance::compose(
     const GraphProvenance& upstream) const {
   std::vector<NodeProvenance> composed;
   composed.reserve(entries_.size());
+  std::vector<SourceDefinition> globally_assigned_sources;
 
   for (const NodeProvenance& entry : entries_) {
     std::vector<SourceDefinition> sources;
@@ -118,6 +195,12 @@ Result<GraphProvenance> GraphProvenance::compose(
       if (by_node == nullptr || by_value == nullptr || by_node != by_value) {
         return Result<GraphProvenance>::failure(provenance_error(
             "upstream provenance does not describe " +
+            node_label(immediate_source.node()) + " " +
+            value_label(immediate_source.value())));
+      }
+      if (by_node->sources().empty()) {
+        return Result<GraphProvenance>::failure(provenance_error(
+            "upstream provenance has no roots for " +
             node_label(immediate_source.node()) + " " +
             value_label(immediate_source.value())));
       }
@@ -141,6 +224,23 @@ Result<GraphProvenance> GraphProvenance::compose(
       }
     }
     sources.erase(std::unique(sources.begin(), sources.end()), sources.end());
+    for (const SourceDefinition& source : sources) {
+      for (const SourceDefinition& assigned : globally_assigned_sources) {
+        if (assigned == source) {
+          return Result<GraphProvenance>::failure(provenance_error(
+              "upstream source " + node_label(source.node()) + " " +
+              value_label(source.value()) +
+              " maps to multiple result definitions"));
+        }
+        if (assigned.node().ordinal() == source.node().ordinal() &&
+            assigned != source) {
+          return Result<GraphProvenance>::failure(provenance_error(
+              "upstream provenance mixes source domains at ordinal " +
+              std::to_string(source.node().ordinal())));
+        }
+      }
+      globally_assigned_sources.push_back(source);
+    }
     composed.push_back(NodeProvenance(
         entry.result_node(), entry.result_value(), std::move(sources)));
   }

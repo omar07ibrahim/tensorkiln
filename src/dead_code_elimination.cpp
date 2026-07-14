@@ -365,8 +365,8 @@ Result<DeadCodeEliminationResult> DeadCodeElimination::run(
         "replayed graph changed construction limits or declaration counts"));
   }
 
-  std::vector<NodeProvenance> provenance_entries;
-  provenance_entries.reserve(graph.nodes().size());
+  std::vector<std::vector<NodeId>> source_nodes_by_result;
+  source_nodes_by_result.reserve(graph.nodes().size());
   for (std::size_t result_index = 0U; result_index < graph.nodes().size();
        ++result_index) {
     const Node& result_definition = graph.nodes()[result_index];
@@ -377,12 +377,8 @@ Result<DeadCodeEliminationResult> DeadCodeElimination::run(
                                    value_map)) {
       return Result<DeadCodeEliminationResult>::failure(*error);
     }
-    std::vector<SourceDefinition> sources;
-    sources.push_back(
-        SourceDefinition(source_definition.id(), source_definition.output()));
-    provenance_entries.push_back(NodeProvenance(
-        result_definition.id(), result_definition.output(),
-        std::move(sources)));
+    source_nodes_by_result.push_back(
+        std::vector<NodeId>{source_definition.id()});
   }
 
   for (std::size_t index = 0U; index < graph.outputs().size(); ++index) {
@@ -412,10 +408,17 @@ Result<DeadCodeEliminationResult> DeadCodeElimination::run(
       retained_constant_elements,
       source_constant_elements - retained_constant_elements,
   };
+  auto provenance = GraphProvenance::create(
+      graph, source, std::move(source_nodes_by_result));
+  if (!provenance.has_value()) {
+    return Result<DeadCodeEliminationResult>::failure(invariant_error(
+        "failed to construct DCE provenance: " +
+        std::string(error_code_name(provenance.error_if()->code)) + ": " +
+        provenance.error_if()->message));
+  }
   return Result<DeadCodeEliminationResult>::success(
       DeadCodeEliminationResult(
-          std::move(graph), GraphProvenance(std::move(provenance_entries)),
-          stats));
+          std::move(graph), std::move(*provenance.value_if()), stats));
 }
 
 Result<DeadCodeEliminationResult> DeadCodeElimination::run(

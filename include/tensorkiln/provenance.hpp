@@ -13,12 +13,11 @@ class SourceDefinition final {
   [[nodiscard]] NodeId node() const noexcept { return node_; }
   [[nodiscard]] ValueId value() const noexcept { return value_; }
 
-  friend bool operator==(const SourceDefinition&,
+ friend bool operator==(const SourceDefinition&,
                          const SourceDefinition&) noexcept = default;
 
  private:
   friend class GraphProvenance;
-  friend class DeadCodeElimination;
 
   SourceDefinition(NodeId node, ValueId value) noexcept;
 
@@ -38,7 +37,6 @@ class NodeProvenance final {
 
  private:
   friend class GraphProvenance;
-  friend class DeadCodeElimination;
 
   NodeProvenance(NodeId result_node, ValueId result_value,
                  std::vector<SourceDefinition> sources);
@@ -56,6 +54,10 @@ class GraphProvenance final {
   GraphProvenance& operator=(GraphProvenance&&) noexcept = default;
   ~GraphProvenance() = default;
 
+  [[nodiscard]] static Result<GraphProvenance> create(
+      const VerifiedGraph& result_graph, const VerifiedGraph& source_graph,
+      std::vector<std::vector<NodeId>> source_nodes_by_result);
+
   [[nodiscard]] std::span<const NodeProvenance> entries() const noexcept {
     return entries_;
   }
@@ -69,8 +71,6 @@ class GraphProvenance final {
   [[nodiscard]] std::string dump() const;
 
  private:
-  friend class DeadCodeElimination;
-
   explicit GraphProvenance(std::vector<NodeProvenance> entries);
 
   std::vector<NodeProvenance> entries_;

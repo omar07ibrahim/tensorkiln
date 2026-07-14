@@ -89,6 +89,14 @@ entry identifies one result `NodeId`/`ValueId` pair and a non-empty, canonical
 set of source `NodeId`/`ValueId` pairs. Each source definition belongs to at
 most one result entry, which makes the singular reverse lookup unambiguous.
 
+`GraphProvenance::create()` is the pass-neutral construction boundary. It takes
+the result graph, the immediate source graph, and one source-node set for every
+result definition in dense result order. The factory resolves complete
+owner-tagged handles through both graphs, rejects empty sets and ambiguous
+reverse mappings, and sorts and de-duplicates each set deterministically. The
+created provenance owns all of its handles and vectors; neither graph needs to
+outlive it.
+
 Immediate dead-code elimination has exactly one source definition for every
 retained result definition. Eliminated definitions have no result entry.
 Lookups compare complete owner-tagged handles, so a foreign handle with the same
