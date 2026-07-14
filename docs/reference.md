@@ -3,10 +3,17 @@
 The reference interpreter is the executable semantics for the graph layer that
 exists today. It evaluates `Input`, `Constant`, broadcast `Add`, batched
 `MatMul`, and `Relu` in topological order. It deliberately owns a distinct
-contiguous `f32` payload for every graph node and does not call future compiler
-passes, optimized kernels, layout code, or the arena runtime.
+contiguous `f32` payload for every graph node and does not call compiler passes,
+including dead-code elimination, optimized kernels, layout code, or the arena
+runtime.
 
 That separation makes it a correctness oracle, not a performance baseline.
+
+When the interpreter is used as a dead-code-elimination oracle, output types,
+raw bits, labels, order, and aliases must agree exactly. Materialized-byte and
+scalar-step totals are expected to differ because eliminated definitions are no
+longer evaluated. The complete boundary is specified in
+[the compiler-pass contract](compiler.md).
 
 ## Public boundary
 
