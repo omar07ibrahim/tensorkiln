@@ -181,6 +181,10 @@ must match the source graph exactly; an incompatible or incomplete map returns
 validation and composition rule. This permits DCE followed by canonicalization
 without losing the IDs of live definitions in the original graph.
 
+For `R` expanded root definitions, composition sorts each result's root set
+and indexes globally assigned root ordinals in `O(R log R)` time with `O(R)`
+additional space. It does not perform a pairwise scan across roots.
+
 Provenance dumps print stable ordinals but omit opaque owner tokens, pointer
 values, and allocation-dependent data.
 

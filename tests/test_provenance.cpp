@@ -1,6 +1,8 @@
 #include "test.hpp"
 
 #include <cstddef>
+#include <cstdint>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
@@ -11,6 +13,7 @@ namespace {
 
 using tensorkiln::ErrorCode;
 using tensorkiln::GraphBuilder;
+using tensorkiln::GraphLimits;
 using tensorkiln::GraphProvenance;
 using tensorkiln::NodeId;
 using tensorkiln::NodeProvenance;
@@ -56,10 +59,11 @@ const tensorkiln::Diagnostic& require_error(
   return *result.error_if();
 }
 
-[[nodiscard]] VerifiedGraph build_chain(const std::size_t node_count,
-                                        const std::string& prefix) {
+[[nodiscard]] VerifiedGraph build_chain(
+    const std::size_t node_count, const std::string& prefix,
+    const GraphLimits limits = GraphLimits{}) {
   TK_REQUIRE(node_count > 0U);
-  GraphBuilder builder;
+  GraphBuilder builder(limits);
   ValueId value =
       require_value(builder.input(prefix + "_input", scalar_type()));
   for (std::size_t index = 1U; index < node_count; ++index) {
@@ -238,6 +242,42 @@ TK_TEST("Provenance composition expands canonical roots and rejects wrong owner"
       require_error(wrong_owner, ErrorCode::provenance_domain_mismatch);
   TK_REQUIRE_EQ(error.message,
                 "upstream provenance does not describe #n0 %0");
+}
+
+TK_TEST("Provenance composition scales across a large canonical root set") {
+  constexpr std::size_t root_count = 4096U;
+  GraphLimits root_limits;
+  root_limits.max_nodes = static_cast<std::uint32_t>(root_count);
+  const VerifiedGraph root =
+      build_chain(root_count, "large_root", root_limits);
+  const VerifiedGraph middle = build_chain(1U, "large_middle");
+  const VerifiedGraph result = build_chain(1U, "large_result");
+
+  std::vector<NodeId> root_sources;
+  root_sources.reserve(root.nodes().size());
+  for (const tensorkiln::Node& node : root.nodes()) {
+    root_sources.push_back(node.id());
+  }
+  std::vector<std::vector<NodeId>> upstream_sources;
+  upstream_sources.push_back(std::move(root_sources));
+  const GraphProvenance upstream = require_provenance(
+      GraphProvenance::create(middle, root, std::move(upstream_sources)));
+
+  std::vector<std::vector<NodeId>> downstream_sources{
+      {middle.nodes()[0].id()},
+  };
+  const GraphProvenance downstream = require_provenance(
+      GraphProvenance::create(result, middle,
+                              std::move(downstream_sources)));
+  const GraphProvenance composed =
+      require_provenance(downstream.compose(upstream));
+
+  TK_REQUIRE_EQ(composed.entries().size(), 1U);
+  const std::span<const tensorkiln::SourceDefinition> sources =
+      composed.entries()[0].sources();
+  TK_REQUIRE_EQ(sources.size(), root_count);
+  TK_REQUIRE_EQ(sources.front().node(), root.nodes().front().id());
+  TK_REQUIRE_EQ(sources.back().node(), root.nodes().back().id());
 }
 
 struct DetachedProvenance final {

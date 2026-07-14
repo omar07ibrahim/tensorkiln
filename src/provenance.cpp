@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
+#include <map>
 #include <optional>
 #include <string>
 #include <utility>
@@ -183,7 +185,7 @@ Result<GraphProvenance> GraphProvenance::compose(
     const GraphProvenance& upstream) const {
   std::vector<NodeProvenance> composed;
   composed.reserve(entries_.size());
-  std::vector<SourceDefinition> globally_assigned_sources;
+  std::map<std::uint32_t, SourceDefinition> globally_assigned_sources;
 
   for (const NodeProvenance& entry : entries_) {
     std::vector<SourceDefinition> sources;
@@ -225,21 +227,20 @@ Result<GraphProvenance> GraphProvenance::compose(
     }
     sources.erase(std::unique(sources.begin(), sources.end()), sources.end());
     for (const SourceDefinition& source : sources) {
-      for (const SourceDefinition& assigned : globally_assigned_sources) {
-        if (assigned == source) {
+      const auto assigned =
+          globally_assigned_sources.find(source.node().ordinal());
+      if (assigned != globally_assigned_sources.end()) {
+        if (assigned->second == source) {
           return Result<GraphProvenance>::failure(provenance_error(
               "upstream source " + node_label(source.node()) + " " +
               value_label(source.value()) +
               " maps to multiple result definitions"));
         }
-        if (assigned.node().ordinal() == source.node().ordinal() &&
-            assigned != source) {
-          return Result<GraphProvenance>::failure(provenance_error(
-              "upstream provenance mixes source domains at ordinal " +
-              std::to_string(source.node().ordinal())));
-        }
+        return Result<GraphProvenance>::failure(provenance_error(
+            "upstream provenance mixes source domains at ordinal " +
+            std::to_string(source.node().ordinal())));
       }
-      globally_assigned_sources.push_back(source);
+      globally_assigned_sources.emplace(source.node().ordinal(), source);
     }
     composed.push_back(NodeProvenance(
         entry.result_node(), entry.result_value(), std::move(sources)));
