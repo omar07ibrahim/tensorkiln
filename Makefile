@@ -22,7 +22,7 @@ TEST_SOURCES := tests/test_arena_planner.cpp tests/test_arena_seeded.cpp \
                 tests/test_arena_verifier.cpp \
                 tests/test_aligned_workspace.cpp \
                 tests/test_dead_code_elimination.cpp \
-                tests/test_execution.cpp \
+                tests/test_execution.cpp tests/test_execution_seeded.cpp \
                 tests/test_graph.cpp \
                 tests/test_execution_plan.cpp \
                 tests/test_execution_plan_verifier.cpp \
@@ -36,17 +36,28 @@ TEST_SOURCES := tests/test_arena_planner.cpp tests/test_arena_seeded.cpp \
                 tests/test_structural_canonicalization_seeded.cpp \
                 tests/test_tensor_type.cpp
 EXAMPLE_SOURCES := examples/inspect_graph.cpp examples/plan_arena.cpp
+NOALLOC_SOURCE := tests/execution_noalloc_main.cpp
 
 LIB_OBJECTS := $(patsubst %.cpp,$(BUILD_DIR)/%.o,$(LIB_SOURCES))
 TEST_OBJECTS := $(patsubst %.cpp,$(BUILD_DIR)/%.o,$(TEST_SOURCES))
 EXAMPLE_OBJECTS := $(patsubst %.cpp,$(BUILD_DIR)/%.o,$(EXAMPLE_SOURCES))
+NOALLOC_OBJECT := $(BUILD_DIR)/$(NOALLOC_SOURCE:.cpp=.o)
 DEPENDENCIES := $(LIB_OBJECTS:.o=.d) $(TEST_OBJECTS:.o=.d) \
-                $(EXAMPLE_OBJECTS:.o=.d)
+                $(EXAMPLE_OBJECTS:.o=.d) $(NOALLOC_OBJECT:.o=.d)
 
 LIBRARY := $(BUILD_DIR)/libtensorkiln.a
 TEST_BINARY := $(BUILD_DIR)/tensorkiln_tests
 EXAMPLE_BINARIES := $(patsubst examples/%.cpp,$(BUILD_DIR)/%,\
                     $(EXAMPLE_SOURCES))
+NOALLOC_BINARY := $(BUILD_DIR)/execution_noalloc
+NOALLOC_WRAP_LDFLAGS := -Wl,--wrap=malloc -Wl,--wrap=calloc \
+                         -Wl,--wrap=realloc -Wl,--wrap=aligned_alloc \
+                         -Wl,--wrap=posix_memalign
+
+TEST_AUDIT_BINARY :=
+ifeq ($(PROFILE),release)
+  TEST_AUDIT_BINARY := $(NOALLOC_BINARY)
+endif
 
 PROJECT_CPPFLAGS := -Iinclude -Itests -MMD -MP
 PROJECT_CXXFLAGS := -std=c++20 -Wall -Wextra -Wpedantic -Werror \
@@ -74,12 +85,18 @@ endif
 
 ARFLAGS := rcsD
 
-.PHONY: all test check sanitize oracle example run-examples clean help
+.PHONY: all test noalloc check sanitize oracle example run-examples clean help
 
 all: $(LIBRARY) $(EXAMPLE_BINARIES)
 
-test: $(TEST_BINARY) run-examples
+test: $(TEST_BINARY) run-examples $(TEST_AUDIT_BINARY)
 	$(TEST_BINARY)
+ifeq ($(PROFILE),release)
+	$(NOALLOC_BINARY)
+endif
+
+noalloc: $(NOALLOC_BINARY)
+	$(NOALLOC_BINARY)
 
 check:
 	$(MAKE) PROFILE=debug test
@@ -108,6 +125,11 @@ $(TEST_BINARY): $(TEST_OBJECTS) $(LIBRARY)
 	@mkdir -p $(dir $@)
 	$(CXX) $(TEST_OBJECTS) $(LIBRARY) $(LDFLAGS) $(PROFILE_LDFLAGS) -o $@
 
+$(NOALLOC_BINARY): $(NOALLOC_OBJECT) $(LIBRARY)
+	@mkdir -p $(dir $@)
+	$(CXX) $(NOALLOC_OBJECT) $(LIBRARY) $(LDFLAGS) $(PROFILE_LDFLAGS) \
+	       $(NOALLOC_WRAP_LDFLAGS) -o $@
+
 $(EXAMPLE_BINARIES): $(BUILD_DIR)/%: $(BUILD_DIR)/examples/%.o $(LIBRARY)
 	@mkdir -p $(dir $@)
 	$(CXX) $< $(LIBRARY) $(LDFLAGS) $(PROFILE_LDFLAGS) -o $@
@@ -121,7 +143,7 @@ clean:
 	rm -rf build
 
 help:
-	@echo 'Targets: all test check sanitize oracle example clean help'
+	@echo 'Targets: all test noalloc check sanitize oracle example clean help'
 	@echo 'Profiles: debug (default), release, sanitize'
 	@echo 'Example: make -j2 CXX=g++ PROFILE=release test'
 
