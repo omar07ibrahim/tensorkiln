@@ -62,8 +62,8 @@ Execution has a stable, phase-based diagnostic order:
 3. reject the first duplicate known name in binding order;
 4. reject the first missing input in graph order;
 5. reject the first wrong-sized input in graph order;
-6. require round-to-nearest and gradual `f32` underflow without changing those
-   floating-point control modes;
+6. require round-to-nearest binary32 arithmetic, active binary64 intermediate
+   precision, and gradual `f32` underflow without changing those control modes;
 7. check aggregate materialized payload in graph order;
 8. check aggregate scalar-step work in graph order;
 9. allocate node payloads and evaluate topologically.
@@ -104,8 +104,17 @@ following hold:
 
 - `float` and `double` report IEEE-754 behavior;
 - `double` has at least twice the `float` significand precision;
-- the active rounding mode is `FE_TONEAREST`;
+- the active rounding mode is `FE_TONEAREST`, with an arithmetic binary32
+  sentinel that also rejects split x87/MXCSR rounding state;
+- a runtime binary64 precision sentinel rejects an x87 single-precision
+  control word;
 - runtime sentinels confirm gradual `f32` underflow, rejecting FTZ/DAZ modes.
+
+On targets whose evaluation method can retain nominal `double` expressions in
+a wider format, the interpreter applies an explicit binary64 rounding barrier
+after every `MatMul` reduction step. Other targets keep the accumulator in
+registers. This pins the reference boundary across SSE and real i386/x87
+execution without imposing an unnecessary store on the common path.
 
 The interpreter does not change rounding or subnormal control modes. Like
 ordinary floating-point code, graph arithmetic and the underflow sentinels may
@@ -136,3 +145,9 @@ three intermediate boundaries with that fixture. Separate adversarial cases
 cover unequal-rank broadcast padding, batched matrix indexing, double-only
 reduction behavior, foreign handles, output aliases, special values, diagnostic
 precedence, and exact resource limits.
+
+The arena executor is implemented separately from this interpreter. Its seeded
+differential corpus exercises all five current kernel variants, arena reuse,
+and optional write auditing while requiring raw-bit output agreement with this
+reference path. See [the execution contract](execution.md) for that runtime's
+distinct storage, lifetime, memory-integrity, and allocation guarantees.

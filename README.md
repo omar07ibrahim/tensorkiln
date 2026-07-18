@@ -3,10 +3,10 @@
 [![CI][ci-badge]][ci-workflow]
 
 TensorKiln is a dependency-free C++20 project building a bounded static `f32`
-tensor compiler/runtime. The shipped alpha verifies and reference-executes
-graphs, applies deterministic graph rewrites, and derives reverse-verified
-storage plans from graph lifetimes. Layout lowering, kernels, and cache-aware
-optimized execution are target layers, not current functionality.
+tensor compiler/runtime. It verifies and reference-executes graphs, applies
+explicit deterministic rewrites, compiles a selected graph into an
+independently verified dense execution plan, and runs that plan in a guarded,
+preallocated arena.
 
 The project keeps one deliberately narrow compiler/runtime architecture small
 enough to inspect end to end. Its v0.1.0 target covers type and shape
@@ -14,14 +14,14 @@ verification, deterministic graph rewrites, layout lowering, kernel selection,
 lifetime-based memory reuse, and differential validation against a separate
 reference interpreter.
 
-> **Status:** the bounded type system, typed graph front-end, independent Python
-> oracle, bounded reference interpreter, and deterministic dead-code
-> elimination and structural canonicalization with composable provenance are
-> available, together with graph-derived compute lifetimes, a deterministic
-> 64-byte interval arena planner, and independent reverse placement
-> verification. Fusion, layout lowering, alias and scratch lowering, kernels,
-> and the optimized executor remain under construction. The non-prerelease
-> v0.1.0 contract below is the target; **Available now** is the shipped subset.
+> **Status:** the current vertical slice includes the bounded graph front-end,
+> independent Python and C++ reference paths, explicit dead-code elimination
+> and structural canonicalization, reverse-verified arena planning, five dense
+> row-major kernels, and a synchronous allocation-free session run path.
+> Fusion, views and in-place aliases, scratch, prepacking, broader operators,
+> SIMD, threading, cache-aware kernels, and benchmarks remain outside the
+> implemented boundary. The non-prerelease v0.1.0 contract below is the target;
+> **Available now** is the exact current subset.
 
 ## Why this exists
 
@@ -33,16 +33,20 @@ small enough to audit end to end:
 VerifiedGraph
     -> optional dead-code elimination
     -> optional exact structural canonicalization
-    -> derive storage-only compute lifetimes
-    -> apply the deterministic arena heuristic
-    -> independently reconstruct and verify exact agreement
+    -> ExecutionPlanCompiler
+         -> select a dense kernel and arena offset for each compute node
+         -> independently reconstruct layouts, storage, lifetimes and work
+         -> verify the complete candidate before returning it
+    -> immutable ExecutionPlan
+    -> ExecutionSession: create -> bind -> run -> result
 ```
 
-These are explicit API calls: arena lowering operates on whichever verified
-graph the caller supplies and does not silently run compiler passes. The goal
-is evidence, not a production-runtime claim. Every eventual optimized result
-must agree with the unoptimized interpreter under a documented numerical
-policy, and every memory-plan claim must be derived from a verifiable plan.
+These remain explicit API calls: plan compilation operates on whichever
+verified graph the caller supplies and never silently runs graph rewrites. The
+goal is evidence, not a production-runtime claim. Executed results are checked
+against a separately implemented interpreter under a documented numerical
+policy, and every executable plan is reconstructed by a verifier that does not
+trust compiler-derived operands, layouts, lifetimes, accounting, or storage.
 
 ## Target v0.1.0 contract
 
@@ -101,15 +105,33 @@ The current vertical slice is small but runnable and inspectable:
 - mandatory reverse reconstruction of graph mappings, lifetimes, limits,
   statistics, and allocations before a planned graph projection is returned,
   with seeded DAG, heterogeneous `MatMul`, ownership, fault-injection, and exact
-  4096/4097-buffer boundary evidence.
+  4096/4097-buffer boundary evidence;
+- a move-only `ExecutionPlan` that owns its selected graph, dense row-major
+  layouts, external-input and owned-constant storage, arena-backed results,
+  deterministic dump, exact limits, and checked work accounting;
+- independently verified selection of `Add` contiguous/broadcast, rank-2 and
+  batched `MatMul`, and contiguous `Relu` kernels;
+- an `ExecutionSession` with a 64-byte-aligned workspace, outer guards for
+  every non-empty workspace, explicit input binding, stale-safe result lookup,
+  and an optional per-kernel shadow audit that rejects writes outside the exact
+  output payload;
+- fail-closed checks for nearest binary32 rounding, binary64 intermediate
+  precision, and gradual `f32` underflow without changing the caller's
+  floating-point modes;
+- a release-profile allocation probe that wraps C and C++ allocation entry
+  points and covers the first and repeated `run()` for all five kernels,
+  regular and audited sessions, result lookup, and a zero-work external plan;
+- a replayable seeded differential corpus of 128 dense DAGs, with arena reuse
+  and raw-bit comparison against the independent reference interpreter.
 
 Validation failures never consume an ID, reserve a name, or mutate resource
 counters. Constants own their exact IEEE-754 payload; the canonical dump uses a
 stable bitwise fingerprint and does not depend on locale or pointer values.
 
 ```bash
-make -j2 test
-make -j2 example
+make -j2 PROFILE=debug test
+make -j2 PROFILE=release test
+make sanitize
 make oracle
 ```
 
@@ -121,18 +143,23 @@ v1.0.0. See the
 [alpha release notes](docs/releases/v0.1.0-alpha.1.md) and
 [changelog](CHANGELOG.md) for the shipped boundary and known limitations.
 
-The first command runs the strict dependency-free test suite and smoke-executes
-both checked examples. The second prints the graph-rewrite pipeline, its
-non-executable 192-to-128-byte graph storage projection, and a standalone
-384-to-192-byte interval-reuse schedule. The third proves that the committed
-golden fixture still matches the independent generator. See
+The debug and release commands run the strict dependency-free suite and all
+three checked examples. Release additionally runs the allocation probe. The
+examples inspect the graph-rewrite pipeline, show verified interval reuse, and
+execute an audited `MatMul -> Add -> Relu` plan while requiring raw-bit
+agreement with the independent interpreter. The sanitizer target runs the same
+suite under AddressSanitizer and UndefinedBehaviorSanitizer; the oracle target
+proves that the committed golden fixture still matches its independent
+generator. See
 [the graph IR contract](docs/ir.md) for construction invariants and
 [the reference interpreter contract](docs/reference.md) for execution,
 resource, lifetime, and numerical semantics. See
 [the compiler-pass contract](docs/compiler.md) for dead-code roots, semantic
 equivalence, exact canonicalization rules, output alias classes, provenance
 composition, and determinism. The verified storage-planning boundary is
-specified in [the arena contract](docs/arena.md).
+specified in [the arena contract](docs/arena.md); executable plan, session,
+binding, view, memory-integrity, and allocation contracts live in
+[the execution contract](docs/execution.md).
 
 ## Proof obligations
 

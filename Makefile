@@ -35,7 +35,8 @@ TEST_SOURCES := tests/test_arena_planner.cpp tests/test_arena_seeded.cpp \
                 tests/test_structural_canonicalization_contracts.cpp \
                 tests/test_structural_canonicalization_seeded.cpp \
                 tests/test_tensor_type.cpp
-EXAMPLE_SOURCES := examples/inspect_graph.cpp examples/plan_arena.cpp
+EXAMPLE_SOURCES := examples/inspect_graph.cpp examples/plan_arena.cpp \
+                   examples/execute_graph.cpp
 NOALLOC_SOURCE := tests/execution_noalloc_main.cpp
 
 LIB_OBJECTS := $(patsubst %.cpp,$(BUILD_DIR)/%.o,$(LIB_SOURCES))
@@ -116,6 +117,7 @@ example: run-examples
 run-examples: $(EXAMPLE_BINARIES)
 	$(BUILD_DIR)/inspect_graph
 	$(BUILD_DIR)/plan_arena
+	$(BUILD_DIR)/execute_graph
 
 $(LIBRARY): $(LIB_OBJECTS)
 	@mkdir -p $(dir $@)

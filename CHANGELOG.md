@@ -10,6 +10,33 @@ between prereleases.
 Work toward the v0.1.0 compiler and optimized-execution contract remains
 in progress.
 
+### Added
+
+- a move-only dense `ExecutionPlan`, produced from minimal kernel/placement
+  decisions only after independent reconstruction of layouts, operands,
+  storage, lifetimes, outputs, limits, and work accounting;
+- verified contiguous and broadcasting `Add`, rank-2 and batched `MatMul`, and
+  contiguous `Relu` kernels;
+- an `ExecutionSession` with a 64-byte-aligned workspace, guards around every
+  non-empty workspace, persistent validated input bindings, stale-safe result
+  lookup, and no published result after failure;
+- an optional preallocated per-kernel write-set audit that detects changes
+  outside the exact output payload, including arena padding and reusable
+  regions;
+- a seeded 128-DAG differential corpus covering all five kernels, arena reuse,
+  audited execution, and raw-bit agreement with the independent interpreter;
+- a release allocation probe covering C and C++ allocation entry points, all
+  kernels, regular and audited sessions, zero-work execution, and both the
+  first and repeated `run()` paths;
+- an audited executable example that prints its verified plan and requires
+  exact agreement with independent reference execution.
+
+### Changed
+
+- reference and executor `MatMul` reductions now pin every reduction step to
+  binary64 on excess-precision targets, and both execution paths reject split
+  binary32 rounding, insufficient binary64 precision, and FTZ/DAZ modes.
+
 ## [0.1.0-alpha.1] - 2026-07-14
 
 This is an experimental, source-only snapshot of the verified graph front end,

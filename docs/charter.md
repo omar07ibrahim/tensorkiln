@@ -75,17 +75,25 @@ graph. Compilation then performs, in order:
 7. liveness-based, 64-byte-aligned arena planning;
 8. independent verification of the resulting plan.
 
-This sequence is the v0.1 target. Dead-code elimination and exact structural
-canonicalization are the graph-to-graph stages available today. A storage-only
-proof slice of stage 7 is also available: the standalone interval core accepts
-explicit requests, while graph arena lowering derives one request for every
-current `Add`, `MatMul`, and `Relu` result and requires independent reverse
-agreement before returning it. This projection intentionally precedes the
-unfinished intermediate stages and is not a lowered execution plan. Fusion,
-layout lowering, kernel selection, view and in-place alias proof, prepacking,
-scratch integration, arena allocation, and optimized execution remain under
-construction. The shipped storage boundary is specified in
-[the arena contract](arena.md).
+This sequence remains the full v0.1 target. Dead-code elimination and exact
+structural canonicalization are the graph-to-graph stages available today and
+remain explicit rather than automatic. A storage-only slice of stage 7 derives
+one request for every current `Add`, `MatMul`, and `Relu` result and requires
+independent reverse agreement before returning it.
+
+A narrow executable slice of stages 6 through 8 is also implemented for the
+current dense row-major operators. `ExecutionPlanCompiler` selects contiguous
+or broadcast `Add`, rank-2 or batched `MatMul`, and contiguous `Relu` kernels,
+then submits only those choices and arena offsets to an independent verifier.
+The verifier reconstructs operands, layouts, storage, lifetimes, limits, and
+work accounting before it can return an owning plan. `ExecutionSession`
+allocates the verified workspace and executes the plan synchronously.
+
+This slice does not imply that the intervening target stages are complete.
+Fusion, strided or transposed views, in-place alias proof, reshape lowering,
+prepacking, kernel scratch, SIMD, threading, and cache-aware kernels remain
+unimplemented. The exact boundaries are specified in
+[the arena contract](arena.md) and [the execution contract](execution.md).
 
 Dead-code elimination treats every declared output and every `Input`
 definition as a root. It preserves the external feed schema, output declaration
@@ -99,8 +107,11 @@ output alias classes and does not apply algebraic identities or floating-point
 reassociation. Its exact shipped guarantees are specified in the same
 compiler-pass contract.
 
-The graph IR describes logical tensors. The plan IR owns strides, aliases,
-kernel variants, arena offsets, scratch requirements, and source provenance.
+The graph IR describes logical tensors. The full target plan IR will own
+strides, alias decisions, kernel variants, arena offsets, scratch requirements,
+and source provenance. The current dense plan owns row-major strides, storage
+classes, kernel variants, arena offsets, and source-node handles; it has no
+view/alias or scratch records and does not absorb graph-rewrite provenance.
 Keeping structured tensor semantics until after graph rewrites follows the
 design direction documented by
 [MLIR Linalg](https://mlir.llvm.org/docs/Dialects/Linalg/) and delaying storage
@@ -113,19 +124,35 @@ explicit pass result rather than metadata embedded in the source graph dump.
 
 ## Execution boundary
 
-The alpha ships a reference interpreter that executes the verified source graph
-and allocates a distinct contiguous result for every node. The items below
-describe the v0.1.0 optimized-execution target and are not available in
-v0.1.0-alpha.1:
+The independent reference interpreter continues to allocate a distinct
+contiguous result for every graph node. The optimized path does not call it or
+reuse its arithmetic implementation.
 
-- the optimized executor runs a verified plan in an aligned workspace;
-- external inputs and immutable constants do not consume arena storage;
-- views alias a root allocation and extend that root's lifetime;
-- graph outputs remain live until execution ends;
-- a compiled graph is immutable, while an execution session owns mutable
-  workspace and is deliberately not thread-safe;
-- after session construction, `run()` performs no heap allocation;
-- output views remain valid only until the next `run()` on that session.
+The current optimized boundary is narrower than the full v0.1 target:
+
+- the executor accepts only an independently verified dense execution plan;
+- external inputs and immutable plan-owned constants consume no arena storage;
+- each computed value is arena-backed and graph outputs stay live through the
+  final compute step;
+- session creation owns one aligned mutable workspace, pointer metadata,
+  stale-result state, an optional write-audit shadow, and outer guards whenever
+  the workspace is non-empty;
+- one session is deliberately not thread-safe, while independent sessions may
+  share one immutable plan;
+- after creation and successful binding, the first and repeated `run()` paths
+  perform no observed heap allocation under the release allocation probe;
+- a successful binding remains active until another bind attempt or session
+  destruction, so its borrowed payloads must remain alive and unchanged;
+- binding, starting another run, moving the session, or destroying it makes an
+  existing result view stale; raw `TensorView` spans are valid only while that
+  guarded result view remains current;
+- every run checks the required rounding, binary64 precision, and gradual
+  underflow environment and publishes no result on failure;
+- outer arena guards are mandatory for every non-empty workspace; the optional
+  per-kernel shadow audit also rejects writes outside the exact result payload.
+
+Views, root aliases, scratch buffers, prepacked constants, fusion, and parallel
+execution remain target work rather than properties inferred from this slice.
 
 ## Required evidence
 
