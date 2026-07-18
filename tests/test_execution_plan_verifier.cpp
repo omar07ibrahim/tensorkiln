@@ -1,8 +1,10 @@
 #include "test.hpp"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <initializer_list>
+#include <limits>
 #include <span>
 #include <string_view>
 #include <utility>
@@ -240,7 +242,7 @@ TK_TEST("Execution plan verifier enforces exact and one-below policy limits") {
                 ErrorCode::plan_step_limit_exceeded);
 }
 
-TK_TEST("Execution plan reports scalar work overflow without materialization") {
+TK_TEST("Oversized plan work fails before materialization") {
   constexpr std::uint64_t extent = UINT64_C(1) << 22U;
   constexpr std::uint64_t max_elements = UINT64_C(1) << 44U;
   constexpr std::uint64_t max_bytes = UINT64_C(1) << 46U;
@@ -250,8 +252,16 @@ TK_TEST("Execution plan reports scalar work overflow without materialization") {
       {static_cast<std::int64_t>(extent),
        static_cast<std::int64_t>(extent)},
       shape_limits));
-  const TensorType huge_type = unwrap(TensorType::create(
-      huge_shape, tensorkiln::ElementType::f32, tensor_limits));
+  auto huge_type_result = TensorType::create(
+      huge_shape, tensorkiln::ElementType::f32, tensor_limits);
+  if (max_bytes > static_cast<std::uint64_t>(
+                      std::numeric_limits<std::size_t>::max())) {
+    TK_REQUIRE(huge_type_result.error_if() != nullptr);
+    TK_REQUIRE_EQ(huge_type_result.error_if()->code,
+                  ErrorCode::byte_count_overflow);
+    return;
+  }
+  const TensorType huge_type = unwrap(std::move(huge_type_result));
 
   tensorkiln::GraphLimits graph_limits;
   graph_limits.shape_limits = shape_limits;
