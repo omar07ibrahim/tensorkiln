@@ -202,13 +202,6 @@ struct ExecutionFixture final {
     return 13;
   }
 
-  std::uint64_t warmup_checksum = UINT64_C(1469598103934665603);
-  if (!run_and_observe(regular, false, warmup_checksum) ||
-      !run_and_observe(audited, false, warmup_checksum) ||
-      !run_and_observe(external, true, warmup_checksum)) {
-    return 14;
-  }
-
   audited_allocations = 0U;
   allocation_audit_armed = true;
   std::uint64_t first_checksum = UINT64_C(1469598103934665603);
@@ -224,13 +217,13 @@ struct ExecutionFixture final {
   allocation_audit_armed = false;
 
   if (!first_ok || !second_ok || first_checksum != second_checksum) {
-    return 15;
+    return 14;
   }
   if (audited_allocations != 0U) {
     std::fprintf(stderr,
                  "execution allocation audit observed %llu allocations\n",
                  static_cast<unsigned long long>(audited_allocations));
-    return 16;
+    return 15;
   }
   return 0;
 }
