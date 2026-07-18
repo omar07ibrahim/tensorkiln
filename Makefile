@@ -8,7 +8,10 @@ BUILD_DIR := build/$(CXX_TAG)/$(PROFILE)
 LIB_SOURCES := src/arena.cpp src/arena_planner.cpp src/arena_support.cpp \
                src/arena_verifier.cpp src/compiler_support.cpp \
                src/dead_code_elimination.cpp \
-               src/diagnostic.cpp src/graph.cpp src/graph_arena.cpp \
+               src/diagnostic.cpp src/execution_plan.cpp \
+               src/execution_plan_compiler.cpp \
+               src/execution_plan_support.cpp \
+               src/execution_plan_verifier.cpp src/graph.cpp src/graph_arena.cpp \
                src/graph_arena_lowering.cpp \
                src/graph_arena_verifier.cpp src/provenance.cpp \
                src/reference.cpp src/shape.cpp src/shape_inference.cpp \
@@ -16,6 +19,8 @@ LIB_SOURCES := src/arena.cpp src/arena_planner.cpp src/arena_support.cpp \
 TEST_SOURCES := tests/test_arena_planner.cpp tests/test_arena_seeded.cpp \
                 tests/test_arena_verifier.cpp \
                 tests/test_dead_code_elimination.cpp tests/test_graph.cpp \
+                tests/test_execution_plan.cpp \
+                tests/test_execution_plan_verifier.cpp \
                 tests/test_graph_arena.cpp \
                 tests/test_graph_arena_seeded.cpp \
                 tests/test_main.cpp tests/test_reference.cpp \

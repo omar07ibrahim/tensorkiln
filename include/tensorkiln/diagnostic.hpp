@@ -49,6 +49,16 @@ enum class ErrorCode : std::uint8_t {
   arena_live_overlap,
   arena_workspace_limit_exceeded,
   arena_workspace_unaddressable,
+  plan_value_limit_exceeded,
+  plan_step_limit_exceeded,
+  plan_output_limit_exceeded,
+  plan_constant_byte_limit_exceeded,
+  plan_work_overflow,
+  plan_scalar_step_limit_exceeded,
+  plan_step_count_mismatch,
+  plan_step_source_mismatch,
+  plan_kernel_invalid,
+  plan_kernel_incompatible,
 };
 
 struct Diagnostic final {
