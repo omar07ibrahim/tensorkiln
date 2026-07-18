@@ -54,8 +54,12 @@ std::string_view error_code_name(const ErrorCode code) noexcept {
       return "input_binding_missing";
     case ErrorCode::input_binding_size_mismatch:
       return "input_binding_size_mismatch";
+    case ErrorCode::input_binding_aliases_workspace:
+      return "input_binding_aliases_workspace";
     case ErrorCode::unsupported_rounding_mode:
       return "unsupported_rounding_mode";
+    case ErrorCode::unsupported_binary64_precision:
+      return "unsupported_binary64_precision";
     case ErrorCode::unsupported_subnormal_mode:
       return "unsupported_subnormal_mode";
     case ErrorCode::reference_materialization_limit_exceeded:

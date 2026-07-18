@@ -26,6 +26,17 @@ static_assert(std::numeric_limits<double>::is_iec559);
 static_assert(std::numeric_limits<double>::digits >=
               2 * std::numeric_limits<float>::digits);
 
+// i386 x87 may otherwise retain a nominal double accumulator in extended
+// precision. Other targets keep the reduction in registers.
+[[nodiscard]] double round_to_binary64(const double value) noexcept {
+#if defined(__FLT_EVAL_METHOD__) && __FLT_EVAL_METHOD__ == 2
+  const volatile double rounded = value;
+  return rounded;
+#else
+  return value;
+#endif
+}
+
 template <typename... Visitors>
 struct Overloaded final : Visitors... {
   using Visitors::operator()...;
@@ -171,8 +182,9 @@ struct Preflight final {
           column * right_layout.strides[right_column_axis];
       assert(left_offset < left_layout.elements);
       assert(right_offset < right_layout.elements);
-      accumulator += static_cast<double>(left.data()[left_offset]) *
-                     static_cast<double>(right.data()[right_offset]);
+      accumulator = round_to_binary64(
+          accumulator + static_cast<double>(left.data()[left_offset]) *
+                            static_cast<double>(right.data()[right_offset]));
     }
     output[index] = static_cast<float>(accumulator);
   }
@@ -305,6 +317,25 @@ struct Preflight final {
          std::bit_cast<std::uint32_t>(produced) == 0x00400000U;
 }
 
+[[nodiscard]] bool binary64_precision_is_active() noexcept {
+  const volatile double base = 1073741824.0;
+  const volatile double one = 1.0;
+  const volatile double sum = base + one;
+  return sum == 1073741825.0;
+}
+
+[[nodiscard]] bool binary32_rounding_is_nearest() noexcept {
+  const volatile float one = 1.0F;
+  const volatile float tie = 0x1p-24F;
+  const volatile float above_tie = 0x1.8p-24F;
+  const volatile float positive_tie = one + tie;
+  const volatile float negative_tie = -one - tie;
+  const volatile float positive_above_tie = one + above_tie;
+  return positive_tie == 1.0F && negative_tie == -1.0F &&
+         std::bit_cast<std::uint32_t>(
+             static_cast<float>(positive_above_tie)) == UINT32_C(0x3f800001);
+}
+
 [[nodiscard]] Result<Preflight> preflight(const VerifiedGraph& graph,
                                           const ReferenceLimits limits) {
   Preflight result{{}, 0U, 0U};
@@ -418,10 +449,17 @@ Result<ReferenceResult> ReferenceInterpreter::run(
     return Result<ReferenceResult>::failure(*validated_bindings.error_if());
   }
 
-  if (std::fegetround() != FE_TONEAREST) {
+  if (std::fegetround() != FE_TONEAREST ||
+      !binary32_rounding_is_nearest()) {
     return Result<ReferenceResult>::failure(Diagnostic{
         ErrorCode::unsupported_rounding_mode,
         "reference interpreter requires the FE_TONEAREST rounding mode",
+    });
+  }
+  if (!binary64_precision_is_active()) {
+    return Result<ReferenceResult>::failure(Diagnostic{
+        ErrorCode::unsupported_binary64_precision,
+        "reference interpreter requires binary64 intermediate precision",
     });
   }
   if (!gradual_underflow_is_active()) {
