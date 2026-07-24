@@ -153,6 +153,13 @@ performance measurement; the
 [source transcript](docs/visuals/generated/arena-plan.txt) is available for
 inspection.*
 
+[![TensorKiln clean-clone reproduction and validation workflow](docs/visuals/reproduce.svg)](docs/visuals/reproduce.svg)
+
+*The primary release target compiles and checks the current slice, exercises
+all three evidence-producing examples, probes allocation-free execution, and
+rejects stale generated visuals. Sanitizer and independent-fixture checks stay
+explicit so each failure has a narrow meaning.*
+
 ```bash
 make -j2 PROFILE=debug test
 make -j2 PROFILE=release test

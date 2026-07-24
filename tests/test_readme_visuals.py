@@ -292,9 +292,31 @@ class DocumentationAssetTests(unittest.TestCase):
         self.assertNotIn("<image", architecture.lower())
         self.assertNotIn(" href=", architecture.lower())
 
+        reproduction_path = (
+            REPOSITORY_ROOT / "docs" / "visuals" / "reproduce.svg"
+        )
+        reproduction = reproduction_path.read_text(encoding="utf-8")
+        ElementTree.fromstring(reproduction)
+        visuals.reject_unsafe_text("reproduction SVG", reproduction)
+        for command in (
+            "make -j2 PROFILE=release test",
+            "make -j2 visuals",
+            "make sanitize",
+            "make oracle",
+        ):
+            self.assertIn(command, reproduction)
+        self.assertNotIn("<script", reproduction.lower())
+        self.assertNotIn("<image", reproduction.lower())
+        self.assertNotIn(" href=", reproduction.lower())
+
+        makefile = (REPOSITORY_ROOT / "Makefile").read_text(encoding="utf-8")
+        for target in ("test:", "visuals:", "sanitize:", "oracle:"):
+            self.assertIn(target, makefile)
+
         readme = (REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
         for relative_path in (
             "docs/visuals/architecture.svg",
+            "docs/visuals/reproduce.svg",
             "docs/visuals/generated/arena-reuse.svg",
             "docs/visuals/generated/execute-graph.svg",
             "docs/visuals/generated/manifest.json",
