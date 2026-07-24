@@ -23,30 +23,46 @@ reference interpreter.
 > implemented boundary. The non-prerelease v0.1.0 contract below is the target;
 > **Available now** is the exact current subset.
 
+## See the current slice execute
+
+[![Complete output from the verified TensorKiln dense execution example](docs/visuals/generated/execute-graph.svg)](docs/visuals/generated/execute-graph.svg)
+
+The panel above is the complete stdout of the checked release example, not a
+mockup or benchmark. It shows the selected `MatMul -> Add -> Relu` kernels,
+their arena placements, the result `[4.5, 11, 0, 11]`, and the final raw-bit
+comparison with the separately implemented reference interpreter. The
+[plain-text transcript](docs/visuals/generated/execute-graph.txt) and
+[SHA-256 evidence manifest](docs/visuals/generated/manifest.json) are committed
+beside the image.
+
+Rebuild and byte-check every generated visual with the standard-library-only
+renderer:
+
+```bash
+make -j2 visuals
+make visuals-check
+```
+
 ## Why this exists
 
 Tensor runtimes often hide graph semantics, allocation policy, and numerical
 trade-offs behind a large dependency stack. TensorKiln keeps one useful slice
 small enough to audit end to end:
 
-```text
-VerifiedGraph
-    -> optional dead-code elimination
-    -> optional exact structural canonicalization
-    -> ExecutionPlanCompiler
-         -> select a dense kernel and arena offset for each compute node
-         -> independently reconstruct layouts, storage, lifetimes and work
-         -> verify the complete candidate before returning it
-    -> immutable ExecutionPlan
-    -> ExecutionSession: create -> bind -> run -> result
-```
+[![TensorKiln implemented architecture and trust boundaries](docs/visuals/architecture.svg)](docs/visuals/architecture.svg)
+
+*Architecture of the implemented vertical slice. Solid arrows are API and
+runtime flow; dashed arrows are evidence produced by examples and tests, not
+work performed inside `ExecutionSession::run()`. Open the image for the
+full-size labels.*
 
 These remain explicit API calls: plan compilation operates on whichever
 verified graph the caller supplies and never silently runs graph rewrites. The
-goal is evidence, not a production-runtime claim. Executed results are checked
-against a separately implemented interpreter under a documented numerical
-policy, and every executable plan is reconstructed by a verifier that does not
-trust compiler-derived operands, layouts, lifetimes, accounting, or storage.
+goal is evidence, not a production-runtime claim. Examples and differential
+tests check executed results against a separately implemented interpreter under
+a documented numerical policy, and every executable plan is reconstructed by a
+verifier that does not trust compiler-derived operands, layouts, lifetimes,
+accounting, or storage.
 
 ## Target v0.1.0 contract
 
@@ -128,11 +144,21 @@ Validation failures never consume an ID, reserve a name, or mutate resource
 counters. Constants own their exact IEEE-754 payload; the canonical dump uses a
 stable bitwise fingerprint and does not depend on locale or pointer values.
 
+[![Verified interval arena reuse derived from plan_arena output](docs/visuals/generated/arena-reuse.svg)](docs/visuals/generated/arena-reuse.svg)
+
+*The real `plan_arena` example places 384 bytes of aligned reservations in a
+192-byte workspace. Adjacent bars reuse a physical slot only where half-open
+lifetimes meet at an exact boundary. This is allocator evidence, not a
+performance measurement; the
+[source transcript](docs/visuals/generated/arena-plan.txt) is available for
+inspection.*
+
 ```bash
 make -j2 PROFILE=debug test
 make -j2 PROFILE=release test
 make sanitize
 make oracle
+make visuals-check
 ```
 
 TensorKiln v0.1.0-alpha.1 is a source-only milestone with an experimental 0.x
@@ -144,13 +170,13 @@ v1.0.0. See the
 [changelog](CHANGELOG.md) for the shipped boundary and known limitations.
 
 The debug and release commands run the strict dependency-free suite and all
-three checked examples. Release additionally runs the allocation probe. The
-examples inspect the graph-rewrite pipeline, show verified interval reuse, and
-execute an audited `MatMul -> Add -> Relu` plan while requiring raw-bit
-agreement with the independent interpreter. The sanitizer target runs the same
-suite under AddressSanitizer and UndefinedBehaviorSanitizer; the oracle target
-proves that the committed golden fixture still matches its independent
-generator. See
+three checked examples. Release additionally runs the allocation probe and
+rejects stale generated visuals. The examples inspect the graph-rewrite
+pipeline, show verified interval reuse, and execute an audited
+`MatMul -> Add -> Relu` plan while requiring raw-bit agreement with the
+independent interpreter. The sanitizer target runs the same suite under
+AddressSanitizer and UndefinedBehaviorSanitizer; the oracle target proves that
+the committed golden fixture still matches its independent generator. See
 [the graph IR contract](docs/ir.md) for construction invariants and
 [the reference interpreter contract](docs/reference.md) for execution,
 resource, lifetime, and numerical semantics. See

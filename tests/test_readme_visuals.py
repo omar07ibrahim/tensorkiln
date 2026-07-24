@@ -272,5 +272,36 @@ class TranscriptTests(unittest.TestCase):
         self.assertNotIn("/home/", artifacts["manifest.json"])
 
 
+class DocumentationAssetTests(unittest.TestCase):
+    def test_architecture_is_self_contained_and_linked(self) -> None:
+        architecture_path = (
+            REPOSITORY_ROOT / "docs" / "visuals" / "architecture.svg"
+        )
+        architecture = architecture_path.read_text(encoding="utf-8")
+        ElementTree.fromstring(architecture)
+        visuals.reject_unsafe_text("architecture SVG", architecture)
+
+        for required_label in (
+            "GraphBuilder",
+            "ExecutionPlanVerifier",
+            "ExecutionSession",
+            "ReferenceInterpreter",
+        ):
+            self.assertIn(required_label, architecture)
+        self.assertNotIn("<script", architecture.lower())
+        self.assertNotIn("<image", architecture.lower())
+        self.assertNotIn(" href=", architecture.lower())
+
+        readme = (REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
+        for relative_path in (
+            "docs/visuals/architecture.svg",
+            "docs/visuals/generated/arena-reuse.svg",
+            "docs/visuals/generated/execute-graph.svg",
+            "docs/visuals/generated/manifest.json",
+        ):
+            self.assertIn(relative_path, readme)
+            self.assertTrue((REPOSITORY_ROOT / relative_path).is_file())
+
+
 if __name__ == "__main__":
     unittest.main()
