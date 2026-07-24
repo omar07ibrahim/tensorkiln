@@ -8,9 +8,12 @@ returns explicit provenance and accounting for the rewrite.
 Graph arena lowering is also available as a storage-only projection. It derives
 lifetimes for the current materializing operations and requires independent
 reverse placement verification, but it is not a graph-to-graph rewrite or an
-executable plan. Fusion, layout lowering, kernel selection, alias and scratch
-lowering, and optimized execution remain later layers. The complete storage
-boundary is specified in [the arena contract](arena.md).
+executable plan. A separate `ExecutionPlanCompiler` now builds a narrow dense
+row-major plan on top of that verified placement and selects five precompiled
+kernel variants. Fusion, views and in-place aliases, scratch, prepacking, and
+broader optimized lowering remain later layers. Storage and runtime boundaries
+are specified in [the arena contract](arena.md) and
+[the execution contract](execution.md).
 
 ## Public boundary
 
@@ -64,6 +67,43 @@ graph, or carry compiler provenance into its result. It assigns dense steps
 only to `Add`, `MatMul`, and `Relu`; inputs and constants remain external. A
 successful result proves a reverse-verified sequential storage placement, not
 numerical equivalence or execution.
+
+## Executable dense plan compilation
+
+Executable compilation is another explicit call on the graph selected by the
+caller:
+
+```cpp
+auto compiled_plan =
+    tensorkiln::ExecutionPlanCompiler::run(compiled.graph());
+if (compiled_plan.error_if() != nullptr) {
+  report(*compiled_plan.error_if());
+  return;
+}
+
+tensorkiln::ExecutionPlan plan =
+    std::move(*compiled_plan.value_if());
+```
+
+`ExecutionPlanCompiler` does not run DCE or structural canonicalization. It
+preflights the selected graph, obtains its reverse-verified arena projection,
+and proposes only two kinds of decisions: one source-node/kernel pair per
+compute step and one byte offset per arena buffer. Kernel selection currently
+distinguishes equal-shape and broadcast `Add`, rank-2 and batched `MatMul`, and
+contiguous `Relu`.
+
+`ExecutionPlanVerifier` is the only construction path for the returned plan.
+It independently reconstructs dense layouts, operand edges, input/constant/
+arena storage, output mappings, arena lifetimes, work accounting, and all
+limits from the source graph. It then validates the compiler's kernel choices
+and placements against those facts. The candidate cannot supply trusted
+operands, layouts, lifetimes, statistics, or constant data.
+
+The move-only result owns a copy of the selected graph, its constant payloads,
+the verified plan records, and the verified arena projection. Compilation does
+not prove numerical equivalence by itself; execution is differentially checked
+against the independent interpreter. The full plan, session, lifetime, and
+memory-integrity contract is in [execution.md](execution.md).
 
 ## Dead-code elimination: reachability
 

@@ -54,8 +54,12 @@ std::string_view error_code_name(const ErrorCode code) noexcept {
       return "input_binding_missing";
     case ErrorCode::input_binding_size_mismatch:
       return "input_binding_size_mismatch";
+    case ErrorCode::input_binding_aliases_workspace:
+      return "input_binding_aliases_workspace";
     case ErrorCode::unsupported_rounding_mode:
       return "unsupported_rounding_mode";
+    case ErrorCode::unsupported_binary64_precision:
+      return "unsupported_binary64_precision";
     case ErrorCode::unsupported_subnormal_mode:
       return "unsupported_subnormal_mode";
     case ErrorCode::reference_materialization_limit_exceeded:
@@ -88,6 +92,26 @@ std::string_view error_code_name(const ErrorCode code) noexcept {
       return "arena_workspace_limit_exceeded";
     case ErrorCode::arena_workspace_unaddressable:
       return "arena_workspace_unaddressable";
+    case ErrorCode::plan_value_limit_exceeded:
+      return "plan_value_limit_exceeded";
+    case ErrorCode::plan_step_limit_exceeded:
+      return "plan_step_limit_exceeded";
+    case ErrorCode::plan_output_limit_exceeded:
+      return "plan_output_limit_exceeded";
+    case ErrorCode::plan_constant_byte_limit_exceeded:
+      return "plan_constant_byte_limit_exceeded";
+    case ErrorCode::plan_work_overflow:
+      return "plan_work_overflow";
+    case ErrorCode::plan_scalar_step_limit_exceeded:
+      return "plan_scalar_step_limit_exceeded";
+    case ErrorCode::plan_step_count_mismatch:
+      return "plan_step_count_mismatch";
+    case ErrorCode::plan_step_source_mismatch:
+      return "plan_step_source_mismatch";
+    case ErrorCode::plan_kernel_invalid:
+      return "plan_kernel_invalid";
+    case ErrorCode::plan_kernel_incompatible:
+      return "plan_kernel_incompatible";
   }
   return "unknown_error";
 }

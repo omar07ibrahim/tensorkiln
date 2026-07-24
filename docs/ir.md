@@ -6,8 +6,12 @@ available graph-to-graph rewrites are specified in
 [the compiler-pass contract](compiler.md). Dead-code elimination and structural
 canonicalization are available. The standalone interval-placement API is
 specified in [the arena contract](arena.md), together with the shipped
-storage-only graph projection. Fusion, lowered layouts, alias and scratch
-lowering, kernels, and execution belong to later layers.
+storage-only graph projection. A separate execution-plan IR now owns verified
+dense layouts, storage classes, kernel choices, and arena offsets for the
+current `Add`, `MatMul`, and `Relu` slice; it is specified in
+[the execution contract](execution.md). The logical graph IR remains unchanged
+and contains none of those lowering decisions. Fusion, views and in-place
+aliases, scratch, prepacking, and broader lowering remain later layers.
 
 ## Construction boundary
 

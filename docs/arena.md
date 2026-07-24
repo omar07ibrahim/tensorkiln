@@ -239,6 +239,25 @@ disagreement is `compiler_internal_invariant`, because it indicates a
 TensorKiln defect rather than caller input. Ordinary C++ allocation failure
 remains `std::bad_alloc`.
 
+## Integration with executable plans
+
+`ExecutionPlanCompiler` consumes the same graph-derived placement boundary when
+it builds an executable dense plan. Its independent plan verifier reconstructs
+the graph-to-arena requests again and requires the candidate offsets to satisfy
+this contract before attaching kernels, layouts, storage classes, and work
+accounting.
+
+`ExecutionSession` then allocates one 64-byte-aligned workspace for the plan's
+logical `workspace_bytes` and resolves every arena-backed value from its
+verified offset. The session's outer guards and optional per-kernel write audit
+are runtime protections layered on that allocation; they are not arena-plan
+bytes and do not change placement statistics.
+
+This integration does not make `ArenaPlan` or `GraphArenaLoweringResult`
+executable on their own. Neither artifact owns kernels, input bindings, result
+views, floating-point checks, or mutable workspace. Those contracts belong to
+[verified dense execution](execution.md).
+
 ## Worked schedule
 
 The runnable [arena example](../examples/plan_arena.cpp) supplies four storage
