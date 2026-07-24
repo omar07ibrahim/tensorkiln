@@ -1,0 +1,33 @@
+{
+  "artifacts": {
+    "arena-plan.txt": {
+      "sha256": "5cda0ab2cc42372c6991c2387aca6635212b35d7dbb2391d0af7895f2af1c0bb"
+    },
+    "arena-reuse.svg": {
+      "sha256": "9c0baf3fce1d27bc0fc085e360edac24a5e795d31dff75f0a75a2c547bd36088"
+    },
+    "execute-graph.svg": {
+      "sha256": "b8e6741259a7b582da5f14f111a9d821ef0279e5736fb0ad9ee3da6b1b442e8e"
+    },
+    "execute-graph.txt": {
+      "sha256": "831194f4d7019e85ba32c7e2355dfc49b4caa3f4b1ae7b9db47b75bdae85a2e4"
+    }
+  },
+  "generator": "tools/render_readme_visuals.py",
+  "reproduce": [
+    "make -j2 PROFILE=release visuals",
+    "make PROFILE=release visuals-check"
+  ],
+  "schema": "tensorkiln.readme-visual-evidence.v1",
+  "scope": "verified deterministic examples; not benchmarks",
+  "sources": {
+    "execute_graph": {
+      "binary": "execute_graph",
+      "stdout_sha256": "831194f4d7019e85ba32c7e2355dfc49b4caa3f4b1ae7b9db47b75bdae85a2e4"
+    },
+    "plan_arena": {
+      "binary": "plan_arena",
+      "stdout_sha256": "5cda0ab2cc42372c6991c2387aca6635212b35d7dbb2391d0af7895f2af1c0bb"
+    }
+  }
+}

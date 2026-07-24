@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1276" height="768" viewBox="0 0 1276 768" role="img" aria-labelledby="title description">
+  <title id="title">TensorKiln verified execute_graph example output</title>
+  <desc id="description">Complete stdout captured from the verified release example; this is an example, not a benchmark.</desc>
+  <rect width="100%" height="100%" rx="18" fill="#0d1117"/>
+  <text x="32" y="38" fill="#f0f6fc" font-family="DejaVu Sans, system-ui, sans-serif" font-size="19" font-weight="700">Verified dense execution example</text>
+  <text x="32" y="61" fill="#8b949e" font-family="DejaVu Sans, system-ui, sans-serif" font-size="12">RELEASE EXAMPLE OUTPUT · NOT A BENCHMARK</text>
+  <rect x="24" y="76" width="1228" height="660" rx="10" fill="#161b22" stroke="#30363d"/>
+  <g font-family="DejaVu Sans Mono, ui-monospace, SFMono-Regular, Consolas, monospace" font-size="13" xml:space="preserve">
+    <text x="48" y="134" fill="#79c0ff" font-weight="600">$ &lt;release-build&gt;/execute_graph</text>
+    <text x="48" y="154" fill="#d2a8ff" font-weight="600">=== verified dense execution plan ===</text>
+    <text x="48" y="174" fill="#c9d1d9" font-weight="400">tensorkiln.execution_plan v0 {</text>
+    <text x="48" y="194" fill="#c9d1d9" font-weight="400">  limits {values=4096, steps=4096, outputs=64, constant_bytes=268435456, scalar_steps=1073741824, arena_buffers=4096, arena_workspace_bytes=268435456}</text>
+    <text x="48" y="214" fill="#c9d1d9" font-weight="400">  stats {values=6, inputs=1, constants=2, steps=3, outputs=1, constant_bytes=32, scalar_steps=20, workspace_bytes=128}</text>
+    <text x="48" y="234" fill="#c9d1d9" font-weight="400">  values {</text>
+    <text x="48" y="254" fill="#c9d1d9" font-weight="400">    %0 f32[2,3] dense strides=[3,1] storage=input #i0 name=x</text>
+    <text x="48" y="274" fill="#c9d1d9" font-weight="400">    %1 f32[3,2] dense strides=[2,1] storage=constant #c0 name=weight fingerprint=6640413917219750661</text>
+    <text x="48" y="294" fill="#c9d1d9" font-weight="400">    %2 f32[2,2] dense strides=[2,1] storage=arena #b0 offset=0</text>
+    <text x="48" y="314" fill="#c9d1d9" font-weight="400">    %3 f32[2] dense strides=[1] storage=constant #c1 name=bias fingerprint=5978795021561992053</text>
+    <text x="48" y="334" fill="#c9d1d9" font-weight="400">    %4 f32[2,2] dense strides=[2,1] storage=arena #b1 offset=64</text>
+    <text x="48" y="354" fill="#c9d1d9" font-weight="400">    %5 f32[2,2] dense strides=[2,1] storage=arena #b2 offset=0</text>
+    <text x="48" y="374" fill="#c9d1d9" font-weight="400">  }</text>
+    <text x="48" y="394" fill="#c9d1d9" font-weight="400">  steps {</text>
+    <text x="48" y="414" fill="#c9d1d9" font-weight="400">    @0 #n2 %2 = matmul_rank2_f32(%0,%1) work=12</text>
+    <text x="48" y="434" fill="#c9d1d9" font-weight="400">    @1 #n4 %4 = add_broadcast_f32(%2,%3) work=4</text>
+    <text x="48" y="454" fill="#c9d1d9" font-weight="400">    @2 #n5 %5 = relu_contiguous_f32(%4) work=4</text>
+    <text x="48" y="474" fill="#c9d1d9" font-weight="400">  }</text>
+    <text x="48" y="494" fill="#c9d1d9" font-weight="400">  outputs {</text>
+    <text x="48" y="514" fill="#c9d1d9" font-weight="400">    #o0 result -&gt; %5</text>
+    <text x="48" y="534" fill="#c9d1d9" font-weight="400">  }</text>
+    <text x="48" y="554" fill="#c9d1d9" font-weight="400">  arena {</text>
+    <text x="48" y="574" fill="#c9d1d9" font-weight="400">    #b0 offset=0 payload=16 reserved=64 live=[0,2)</text>
+    <text x="48" y="594" fill="#c9d1d9" font-weight="400">    #b1 offset=64 payload=16 reserved=64 live=[1,3)</text>
+    <text x="48" y="614" fill="#c9d1d9" font-weight="400">    #b2 offset=0 payload=16 reserved=64 live=[2,3)</text>
+    <text x="48" y="634" fill="#c9d1d9" font-weight="400">  }</text>
+    <text x="48" y="654" fill="#c9d1d9" font-weight="400">}</text>
+    <text x="48" y="674" fill="#f2cc60" font-weight="600">result = [4.5, 11, 0, 11]</text>
+    <text x="48" y="694" fill="#7ee787" font-weight="600">verified: audited execution matches the independent reference bit for bit</text>
+  </g>
+  <text x="1244" y="756" text-anchor="end" fill="#6e7681" font-family="DejaVu Sans Mono, ui-monospace, monospace" font-size="10">stdout sha256:831194f4d7019e85</text>
+</svg>
