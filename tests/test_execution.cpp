@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
+#include <limits>
 #include <span>
 #include <string_view>
 #include <utility>
@@ -488,6 +489,74 @@ TK_TEST("ReLU execution preserves NaN bits and maps signed zero to positive") {
                 UINT32_C(0x7fc12345));
   TK_REQUIRE_EQ(std::bit_cast<std::uint32_t>(output.data()[5]),
                 UINT32_C(0xffc54321));
+}
+
+TK_TEST("Last-axis Softmax applies its edge policy on repeated audited runs") {
+  GraphBuilder builder;
+  const ValueId input = unwrap(builder.input("x", f32({4, 4})));
+  const ValueId probabilities = unwrap(builder.softmax(input));
+  static_cast<void>(
+      unwrap(builder.output("probabilities", probabilities)));
+  const VerifiedGraph graph = unwrap(std::move(builder).finish());
+  const ExecutionPlan plan = unwrap(ExecutionPlanCompiler::run(graph));
+  TK_REQUIRE_EQ(plan.steps().size(), 1U);
+  TK_REQUIRE_EQ(plan.steps()[0].kernel(),
+                tensorkiln::DenseKernelKind::softmax_last_axis_f32);
+
+  const float payload_nan =
+      std::bit_cast<float>(UINT32_C(0x7fc12345));
+  const float infinity = std::numeric_limits<float>::infinity();
+  const std::array<float, 16U> values{{
+      payload_nan, infinity, 0.0F, -infinity,
+      infinity, 3.0F, infinity, -infinity,
+      -infinity, -infinity, -infinity, -infinity,
+      -infinity, 0.0F, 0.0F, -infinity,
+  }};
+  const float canonical_nan =
+      std::bit_cast<float>(UINT32_C(0x7fc00000));
+  const std::array<float, 16U> expected{{
+      canonical_nan, canonical_nan, canonical_nan, canonical_nan,
+      0.5F, 0.0F, 0.5F, 0.0F,
+      canonical_nan, canonical_nan, canonical_nan, canonical_nan,
+      0.0F, 0.5F, 0.5F, 0.0F,
+  }};
+  const std::array<ExecutionInputBinding, 1U> bindings{{{"x", values}}};
+  ExecutionSession session = ExecutionSession::create(
+      plan, tensorkiln::ExecutionSessionOptions{true});
+  TK_REQUIRE(session.audits_kernel_writes());
+  TK_REQUIRE(session.bind(bindings).has_value());
+
+  TK_REQUIRE_EQ(session.run(), ExecutionRunStatus::success);
+  require_bit_equal(
+      require_output(*session.result(), "probabilities").data(), expected);
+  TK_REQUIRE_EQ(session.run(), ExecutionRunStatus::success);
+  require_bit_equal(
+      require_output(*session.result(), "probabilities").data(), expected);
+}
+
+TK_TEST("Softmax write auditing rejects a write outside its output") {
+  GraphBuilder builder;
+  const ValueId input = unwrap(builder.input("x", f32({2, 4})));
+  const ValueId probabilities = unwrap(builder.softmax(input));
+  static_cast<void>(
+      unwrap(builder.output("probabilities", probabilities)));
+  const VerifiedGraph graph = unwrap(std::move(builder).finish());
+  const ExecutionPlan plan = unwrap(ExecutionPlanCompiler::run(graph));
+  TK_REQUIRE_EQ(plan.steps()[0].kernel(),
+                tensorkiln::DenseKernelKind::softmax_last_axis_f32);
+
+  const std::array<float, 8U> values{{
+      -1.0F, 0.0F, 1.0F, 2.0F,
+      2.0F, 1.0F, 0.0F, -1.0F,
+  }};
+  const std::array<ExecutionInputBinding, 1U> bindings{{{"x", values}}};
+  ExecutionSession session = ExecutionSession::create(
+      plan, tensorkiln::ExecutionSessionOptions{true});
+  TK_REQUIRE(session.bind(bindings).has_value());
+  tensorkiln::detail::set_execution_fault_for_test(
+      session, tensorkiln::detail::ExecutionFaultKind::write_outside_output);
+  TK_REQUIRE_EQ(session.run(), ExecutionRunStatus::memory_corruption);
+  TK_REQUIRE(!session.result().has_value());
 }
 
 TK_TEST("Optional kernel write audit rejects an in-arena stray write") {

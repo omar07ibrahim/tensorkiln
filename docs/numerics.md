@@ -55,7 +55,7 @@ same rounded numerators that are normalized.
 
 `std::exp` is not required to be bit-identical across operating-system math
 libraries. Softmax comparisons use the tolerance above and a slice-sum check;
-they never inherit the raw-bit claim made for the current five optimized
+they never inherit the raw-bit claim made for the five pre-existing algebraic
 kernels. The separate fixture uses 80-digit Python `Decimal` exponentials
 rather than extending the existing raw-bit Python corpus. On excess-precision
 targets, each denominator addition is explicitly rounded to binary64. Sticky
@@ -78,6 +78,15 @@ can retain a wider register value, both the executor and reference path apply
 an explicit binary64 rounding barrier after every reduction step. Other
 targets keep the accumulator in registers without an artificial store.
 
+`softmax_last_axis_f32` independently repeats the reference operation's
+three-pass ordering for each contiguous last-axis slice and applies the same
+NaN, positive-infinity, and all-negative-infinity precedence. Its ordinary
+path stores binary32-rounded exponentials in the output payload, accumulates
+those rounded numerators in binary64 with the same excess-precision barrier,
+then normalizes in place. Its evidence uses the Softmax tolerance,
+normalized-slice, and translation-invariance rules rather than raw-bit
+agreement across math libraries.
+
 Before running a kernel, `ExecutionSession` requires `FE_TONEAREST`, confirms
 binary32 nearest rounding with an arithmetic sentinel, confirms active
 binary64 intermediate precision, and checks both consumption and production of
@@ -87,11 +96,15 @@ the environment, and any failed check publishes no result. Builds use
 `-fno-fast-math` and `-ffp-contract=off`.
 
 The seeded arena corpus compares complete output bit patterns with the
-independent reference interpreter across all five current kernel variants.
-Reference-only Softmax does not change that corpus or claim. This evidence is
-exact for the current fixed operation order; it is not a license for future
-fusion, reassociation, contraction, or transcendental kernels to inherit the
-same claim without a new policy and tests. See [execution.md](execution.md).
+independent reference interpreter across the five pre-existing algebraic
+kernel variants.
+Optimized last-axis Softmax is intentionally excluded from that unchanged
+raw-bit corpus. Its separate seeded corpus uses tolerance, normalized-slice,
+and translation-invariance checks because `std::exp` may differ across math
+libraries. This evidence is exact for the five fixed algebraic operation paths;
+it is not a license for future fusion, reassociation, contraction, or
+transcendental kernels to inherit the same claim without a new policy and
+tests. See [execution.md](execution.md).
 
 ## Structural pass rule
 

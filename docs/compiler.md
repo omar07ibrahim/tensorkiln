@@ -92,9 +92,10 @@ preflights the selected graph, obtains its reverse-verified arena projection,
 and proposes only two kinds of decisions: one source-node/kernel pair per
 compute step and one byte offset per arena buffer. Kernel selection currently
 distinguishes equal-shape and broadcast `Add`, rank-2 and batched `MatMul`, and
-contiguous `Relu`. `Softmax` has reference semantics and storage lowering but
-no optimized kernel in this slice, so plan compilation returns
-`plan_operation_unsupported` before accepting candidate steps or placements.
+contiguous `Relu`, plus `softmax_last_axis_f32` when a `Softmax` stores the
+canonical final axis. A valid non-last Softmax remains outside the optimized
+slice, so plan compilation returns `plan_operation_unsupported` before
+accepting candidate steps or placements.
 
 `ExecutionPlanVerifier` is the only construction path for the returned plan.
 It independently reconstructs dense layouts, operand edges, input/constant/
@@ -102,6 +103,10 @@ arena storage, output mappings, arena lifetimes, work accounting, and all
 limits from the source graph. It then validates the compiler's kernel choices
 and placements against those facts. The candidate cannot supply trusted
 operands, layouts, lifetimes, statistics, or constant data.
+
+Forward analysis and reverse verification each reconstruct the last-axis
+Softmax compatibility condition and checked `3 * numel` work independently.
+The candidate supplies neither the axis nor its work count.
 
 The move-only result owns a copy of the selected graph, its constant payloads,
 the verified plan records, and the verified arena projection. Compilation does

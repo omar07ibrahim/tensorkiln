@@ -173,9 +173,10 @@ Softmax axis traversal and non-finite slices, diagnostic precedence, and exact
 resource limits.
 
 The arena executor is implemented separately from this interpreter. Its seeded
-differential corpus exercises all five current kernel variants, arena reuse,
-and optional write auditing while requiring raw-bit output agreement with this
-reference path. `Softmax` is not yet an optimized kernel and therefore does not
-extend that five-kernel claim. See [the execution contract](execution.md) for
-that runtime's distinct storage, lifetime, memory-integrity, and allocation
-guarantees.
+differential corpus exercises the five pre-existing algebraic kernel variants,
+arena reuse, and optional write auditing while requiring raw-bit output
+agreement with this reference path. Optimized last-axis `Softmax` is exercised
+by a separate tolerance, normalization, and translation-invariance corpus and
+does not extend that five-kernel raw-bit claim. See
+[the execution contract](execution.md) for that runtime's distinct storage,
+lifetime, memory-integrity, and allocation guarantees.

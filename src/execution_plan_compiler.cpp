@@ -65,8 +65,17 @@ class ForwardKernelSelector final {
                : std::nullopt;
   }
   [[nodiscard]] std::optional<DenseKernelKind> operator()(
-      const SoftmaxOp&) const noexcept {
-    return std::nullopt;
+      const SoftmaxOp& operation) const noexcept {
+    if (node_.inputs().size() != 1U) {
+      return std::nullopt;
+    }
+    const TensorType* input = graph_.type(node_.inputs()[0]);
+    const std::size_t rank = node_.output_type().shape().rank();
+    if (input == nullptr || *input != node_.output_type() || rank == 0U ||
+        static_cast<std::size_t>(operation.axis) != rank - 1U) {
+      return std::nullopt;
+    }
+    return DenseKernelKind::softmax_last_axis_f32;
   }
 
  private:

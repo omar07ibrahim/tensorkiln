@@ -16,10 +16,11 @@ reference interpreter.
 
 > **Status:** the current vertical slice includes the bounded graph front-end,
 > independent Python and C++ reference paths, explicit dead-code elimination
-> and structural canonicalization, reverse-verified arena planning, five dense
-> row-major kernels, and a synchronous allocation-free session run path.
-> Axis-aware `Softmax` is available in the graph, rewrite, reference, and
-> storage-planning layers but does not yet have an optimized kernel.
+> and structural canonicalization, reverse-verified arena planning, six dense
+> row-major kernel kinds, and a synchronous allocation-free session run path.
+> Axis-aware `Softmax` is available throughout the graph and reference layers;
+> the optimized plan supports only its canonical last axis, while other valid
+> axes remain reference-only.
 > Fusion, views and in-place aliases, scratch, prepacking, broader operators,
 > SIMD, threading, cache-aware kernels, and benchmarks remain outside the
 > implemented boundary. The non-prerelease v0.1.0 contract below is the target;
@@ -132,9 +133,10 @@ The current vertical slice is small but runnable and inspectable:
   layouts, external-input and owned-constant storage, arena-backed results,
   deterministic dump, exact limits, and checked work accounting;
 - independently verified selection of `Add` contiguous/broadcast, rank-2 and
-  batched `MatMul`, and contiguous `Relu` kernels;
+  batched `MatMul`, contiguous `Relu`, and last-axis
+  `softmax_last_axis_f32` kernels;
 - a typed `plan_operation_unsupported` boundary for graph operations, including
-  the current reference-only `Softmax`, that have no optimized kernel;
+  valid non-last-axis `Softmax`, that have no optimized kernel;
 - an `ExecutionSession` with a 64-byte-aligned workspace, outer guards for
   every non-empty workspace, explicit input binding, stale-safe result lookup,
   and an optional per-kernel shadow audit that rejects writes outside the exact
@@ -143,10 +145,13 @@ The current vertical slice is small but runnable and inspectable:
   precision, and gradual `f32` underflow without changing the caller's
   floating-point modes;
 - a release-profile allocation probe that wraps C and C++ allocation entry
-  points and covers the first and repeated `run()` for all five kernels,
-  regular and audited sessions, result lookup, and a zero-work external plan;
+  points and covers first and repeated `run()` calls for the five algebraic
+  kernels, warm first and repeated last-axis `Softmax`, regular and audited
+  sessions, result lookup, and a zero-work external plan;
 - a replayable seeded differential corpus of 128 dense DAGs, with arena reuse
-  and raw-bit comparison against the independent reference interpreter.
+  and raw-bit comparison against the independent reference interpreter, plus a
+  separate seeded last-axis `Softmax` corpus using tolerance, normalization,
+  and translation-invariance checks.
 
 Validation failures never consume an ID, reserve a name, or mutate resource
 counters. Constants own their exact IEEE-754 payload; the canonical dump uses a

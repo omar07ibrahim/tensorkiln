@@ -147,12 +147,39 @@ struct ExecutionFixture final {
          mix_output(session, "batched", checksum);
 }
 
+[[nodiscard]] bool run_and_observe_output(
+    tensorkiln::ExecutionSession& session, const std::string_view name,
+    std::uint64_t& checksum) noexcept {
+  return session.run() == tensorkiln::ExecutionRunStatus::success &&
+         mix_output(session, name, checksum);
+}
+
 [[nodiscard]] int audit_execution() {
   const ExecutionFixture fixture = make_execution_fixture();
   const tensorkiln::ExecutionPlan plan =
       unwrap(tensorkiln::ExecutionPlanCompiler::run(fixture.graph));
-  std::array<std::uint64_t, 5U> kernel_counts{};
+
+  tensorkiln::GraphBuilder softmax_builder;
+  const tensorkiln::ValueId softmax_input =
+      unwrap(softmax_builder.input("x", f32({2, 4})));
+  const tensorkiln::ValueId probabilities =
+      unwrap(softmax_builder.softmax(softmax_input));
+  static_cast<void>(
+      unwrap(softmax_builder.output("softmax", probabilities)));
+  const tensorkiln::VerifiedGraph softmax_graph =
+      unwrap(std::move(softmax_builder).finish());
+  const tensorkiln::ExecutionPlan softmax_plan =
+      unwrap(tensorkiln::ExecutionPlanCompiler::run(softmax_graph));
+
+  std::array<std::uint64_t, 6U> kernel_counts{};
   for (const tensorkiln::ExecutionStep& step : plan.steps()) {
+    const std::size_t kernel = static_cast<std::size_t>(step.kernel());
+    if (kernel >= kernel_counts.size()) {
+      return 10;
+    }
+    ++kernel_counts[kernel];
+  }
+  for (const tensorkiln::ExecutionStep& step : softmax_plan.steps()) {
     const std::size_t kernel = static_cast<std::size_t>(step.kernel());
     if (kernel >= kernel_counts.size()) {
       return 10;
@@ -181,6 +208,25 @@ struct ExecutionFixture final {
     return 12;
   }
 
+  const std::array<float, 8U> softmax_data{{
+      -2.0F, -1.0F, 0.0F, 1.0F,
+      1.5F, 0.5F, -0.5F, -1.5F,
+  }};
+  const std::array<tensorkiln::ExecutionInputBinding, 1U>
+      softmax_bindings{{{"x", softmax_data}}};
+  // create() performs the process-local, non-foldable std::exp prewarm before
+  // the allocation counter is armed. Both measured runs below are warm.
+  tensorkiln::ExecutionSession softmax_regular =
+      tensorkiln::ExecutionSession::create(softmax_plan);
+  tensorkiln::ExecutionSession softmax_audited =
+      tensorkiln::ExecutionSession::create(
+          softmax_plan, tensorkiln::ExecutionSessionOptions{true});
+  if (!softmax_regular.bind(softmax_bindings).has_value() ||
+      !softmax_audited.bind(softmax_bindings).has_value() ||
+      !softmax_audited.audits_kernel_writes()) {
+    return 13;
+  }
+
   tensorkiln::GraphBuilder external_builder;
   const tensorkiln::ValueId external_value =
       unwrap(external_builder.input("x", f32({3})));
@@ -199,7 +245,7 @@ struct ExecutionFixture final {
           external_plan, tensorkiln::ExecutionSessionOptions{true});
   if (!external.bind(external_bindings).has_value() ||
       external.workspace_bytes() != 0U) {
-    return 13;
+    return 14;
   }
 
   audited_allocations = 0U;
@@ -208,22 +254,30 @@ struct ExecutionFixture final {
   const bool first_ok =
       run_and_observe(regular, false, first_checksum) &&
       run_and_observe(audited, false, first_checksum) &&
+      run_and_observe_output(
+          softmax_regular, "softmax", first_checksum) &&
+      run_and_observe_output(
+          softmax_audited, "softmax", first_checksum) &&
       run_and_observe(external, true, first_checksum);
   std::uint64_t second_checksum = UINT64_C(1469598103934665603);
   const bool second_ok =
       run_and_observe(regular, false, second_checksum) &&
       run_and_observe(audited, false, second_checksum) &&
+      run_and_observe_output(
+          softmax_regular, "softmax", second_checksum) &&
+      run_and_observe_output(
+          softmax_audited, "softmax", second_checksum) &&
       run_and_observe(external, true, second_checksum);
   allocation_audit_armed = false;
 
   if (!first_ok || !second_ok || first_checksum != second_checksum) {
-    return 14;
+    return 15;
   }
   if (audited_allocations != 0U) {
     std::fprintf(stderr,
                  "execution allocation audit observed %llu allocations\n",
                  static_cast<unsigned long long>(audited_allocations));
-    return 15;
+    return 16;
   }
   return 0;
 }

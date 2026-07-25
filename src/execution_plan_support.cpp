@@ -37,7 +37,7 @@ class PlanOperationClass final {
     return Kind::compute;
   }
   [[nodiscard]] Kind operator()(const SoftmaxOp&) const noexcept {
-    return Kind::unsupported;
+    return Kind::compute;
   }
 };
 
@@ -57,6 +57,17 @@ class PlanOperationClass final {
   if (std::holds_alternative<AddOp>(node.operation()) ||
       std::holds_alternative<ReluOp>(node.operation())) {
     return Result<std::uint64_t>::success(node.output_type().numel());
+  }
+  if (std::holds_alternative<SoftmaxOp>(node.operation())) {
+    constexpr std::uint64_t passes = 3U;
+    if (node.output_type().numel() >
+        std::numeric_limits<std::uint64_t>::max() / passes) {
+      return Result<std::uint64_t>::failure(execution_plan_error(
+          ErrorCode::plan_work_overflow,
+          "scalar work overflows uint64 at " + node_label(node.id())));
+    }
+    return Result<std::uint64_t>::success(
+        node.output_type().numel() * passes);
   }
   if (std::holds_alternative<MatMulOp>(node.operation())) {
     if (node.inputs().size() != 2U) {
@@ -150,6 +161,25 @@ Result<ExecutionPlanSourceAnalysis> analyze_execution_plan_source(
       }
     }
 
+    if (const auto* softmax =
+            std::get_if<SoftmaxOp>(&node.operation())) {
+      const std::size_t rank = node.output_type().shape().rank();
+      if (rank == 0U ||
+          static_cast<std::size_t>(softmax->axis) >= rank) {
+        return analysis_invariant(
+            "execution plan source has an invalid softmax axis at " +
+            node_label(node.id()));
+      }
+      if (static_cast<std::size_t>(softmax->axis) != rank - 1U) {
+        return Result<ExecutionPlanSourceAnalysis>::failure(
+            execution_plan_error(
+                ErrorCode::plan_operation_unsupported,
+                "plan backend does not support softmax axis " +
+                    std::to_string(softmax->axis) + " at " +
+                    node_label(node.id())));
+      }
+    }
+
     switch (std::visit(PlanOperationClass{}, node.operation())) {
       case PlanOperationClass::Kind::input:
         ++analysis.input_count;
@@ -179,16 +209,10 @@ Result<ExecutionPlanSourceAnalysis> analyze_execution_plan_source(
       case PlanOperationClass::Kind::compute:
         ++analysis.step_count;
         break;
-      case PlanOperationClass::Kind::unsupported: {
-        const auto& softmax =
-            std::get<SoftmaxOp>(node.operation());
-        return Result<ExecutionPlanSourceAnalysis>::failure(
-            execution_plan_error(
-                ErrorCode::plan_operation_unsupported,
-                "plan backend does not support softmax axis " +
-                    std::to_string(softmax.axis) + " at " +
-                    node_label(node.id())));
-      }
+      case PlanOperationClass::Kind::unsupported:
+        return analysis_invariant(
+            "execution plan source contains an unclassified operation at " +
+            node_label(node.id()));
     }
   }
 

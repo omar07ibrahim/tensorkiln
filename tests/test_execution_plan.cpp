@@ -230,6 +230,50 @@ TK_TEST("Execution plan classifies contiguous add and batched matmul") {
                 DenseKernelKind::add_contiguous_f32);
 }
 
+TK_TEST("Execution plan selects only canonical last-axis Softmax") {
+  GraphBuilder builder;
+  const ValueId input = unwrap(builder.input("x", f32({2, 3, 4})));
+  const ValueId probabilities = unwrap(builder.softmax(input, -1));
+  static_cast<void>(
+      unwrap(builder.output("probabilities", probabilities)));
+  const VerifiedGraph graph = unwrap(std::move(builder).finish());
+  const ExecutionPlan plan = unwrap(ExecutionPlanCompiler::run(graph));
+
+  TK_REQUIRE_EQ(plan.stats().value_count, 2U);
+  TK_REQUIRE_EQ(plan.stats().step_count, 1U);
+  TK_REQUIRE_EQ(plan.stats().scalar_steps, 72U);
+  TK_REQUIRE_EQ(plan.steps().size(), 1U);
+  TK_REQUIRE_EQ(plan.steps()[0].source_node().ordinal(), 1U);
+  TK_REQUIRE_EQ(plan.steps()[0].kernel(),
+                DenseKernelKind::softmax_last_axis_f32);
+  TK_REQUIRE_EQ(plan.steps()[0].scalar_steps(), 72U);
+  TK_REQUIRE_EQ(plan.steps()[0].operands().size(), 1U);
+  TK_REQUIRE_EQ(plan.steps()[0].operands()[0], input);
+  TK_REQUIRE_EQ(plan.steps()[0].output(), probabilities);
+  TK_REQUIRE(plan.dump().find(
+                 "softmax_last_axis_f32(%0) work=72") !=
+             std::string::npos);
+
+  TK_REQUIRE_EQ(static_cast<std::uint8_t>(
+                    DenseKernelKind::add_contiguous_f32),
+                0U);
+  TK_REQUIRE_EQ(static_cast<std::uint8_t>(
+                    DenseKernelKind::add_broadcast_f32),
+                1U);
+  TK_REQUIRE_EQ(static_cast<std::uint8_t>(
+                    DenseKernelKind::matmul_rank2_f32),
+                2U);
+  TK_REQUIRE_EQ(static_cast<std::uint8_t>(
+                    DenseKernelKind::matmul_batched_f32),
+                3U);
+  TK_REQUIRE_EQ(static_cast<std::uint8_t>(
+                    DenseKernelKind::relu_contiguous_f32),
+                4U);
+  TK_REQUIRE_EQ(static_cast<std::uint8_t>(
+                    DenseKernelKind::softmax_last_axis_f32),
+                5U);
+}
+
 TK_TEST("Execution plan represents a scalar with an empty dense stride list") {
   GraphBuilder builder;
   const TensorType scalar =

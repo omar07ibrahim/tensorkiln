@@ -162,6 +162,13 @@ TK_TEST("Execution plan verifier rejects invalid and incompatible kernels") {
                     fixture.graph,
                     candidate_for(incompatible, fixture.placements)),
                 ErrorCode::plan_kernel_incompatible);
+
+  incompatible = fixture.specs;
+  incompatible[1].kernel = DenseKernelKind::softmax_last_axis_f32;
+  require_error(ExecutionPlanVerifier::verify(
+                    fixture.graph,
+                    candidate_for(incompatible, fixture.placements)),
+                ErrorCode::plan_kernel_incompatible);
 }
 
 TK_TEST("Execution plan verifier delegates placement proof to arena verifier") {
@@ -313,17 +320,19 @@ TK_TEST("Execution plan verifier accepts an external-only empty candidate") {
   TK_REQUIRE_EQ(plan.stats().workspace_bytes, 0U);
 }
 
-TK_TEST("Execution plans reject reference-only Softmax with a typed error") {
-  const std::array<std::int64_t, 2U> axes{{0, -1}};
+TK_TEST("Execution plans reject valid non-last Softmax with a typed error") {
+  const std::array<std::int64_t, 4U> axes{{0, 1, -3, -2}};
   for (const std::int64_t axis : axes) {
     GraphBuilder builder;
-    const ValueId input = unwrap(builder.input("x", f32({2, 3})));
+    const ValueId input = unwrap(builder.input("x", f32({2, 3, 4})));
     const ValueId probabilities =
         unwrap(builder.softmax(input, axis));
     static_cast<void>(
         unwrap(builder.output("probabilities", probabilities)));
     const VerifiedGraph graph = unwrap(std::move(builder).finish());
-    const std::uint32_t canonical_axis = axis < 0 ? 1U : 0U;
+    const std::uint32_t canonical_axis =
+        axis < 0 ? static_cast<std::uint32_t>(axis + 3)
+                 : static_cast<std::uint32_t>(axis);
     const std::string expected_message =
         "plan backend does not support softmax axis " +
         std::to_string(canonical_axis) + " at #n1";
@@ -347,6 +356,94 @@ TK_TEST("Execution plans reject reference-only Softmax with a typed error") {
             .message,
         expected_message);
   }
+}
+
+TK_TEST("Execution plan verifier reconstructs Softmax kernel work and limits") {
+  GraphBuilder builder;
+  const ValueId input = unwrap(builder.input("x", f32({2, 3})));
+  const ValueId probabilities = unwrap(builder.softmax(input, -1));
+  static_cast<void>(
+      unwrap(builder.output("probabilities", probabilities)));
+  const VerifiedGraph graph = unwrap(std::move(builder).finish());
+
+  const std::array<ExecutionStepSpec, 1U> specs{{
+      {1U, DenseKernelKind::softmax_last_axis_f32},
+  }};
+  const std::array<ArenaPlacement, 1U> placements{{
+      {0U, 0U},
+  }};
+  const ExecutionPlanCandidate candidate{
+      std::span<const ExecutionStepSpec>{specs},
+      std::span<const ArenaPlacement>{placements},
+  };
+  ExecutionPlanLimits exact;
+  exact.max_values = 2U;
+  exact.max_steps = 1U;
+  exact.max_outputs = 1U;
+  exact.max_owned_constant_bytes = 0U;
+  exact.max_scalar_steps = 18U;
+  exact.arena_limits = tensorkiln::ArenaLimits{1U, 64U};
+
+  const ExecutionPlan verified =
+      unwrap(ExecutionPlanVerifier::verify(graph, candidate, exact));
+  const ExecutionPlan compiled =
+      unwrap(ExecutionPlanCompiler::run(graph, exact));
+  TK_REQUIRE_EQ(verified.dump(), compiled.dump());
+  TK_REQUIRE_EQ(verified.steps()[0].scalar_steps(), 18U);
+  TK_REQUIRE_EQ(verified.stats().scalar_steps, 18U);
+
+  ExecutionPlanLimits one_below = exact;
+  one_below.max_scalar_steps = 17U;
+  require_error(ExecutionPlanVerifier::verify(
+                    graph, candidate, one_below),
+                ErrorCode::plan_scalar_step_limit_exceeded);
+  require_error(ExecutionPlanCompiler::run(graph, one_below),
+                ErrorCode::plan_scalar_step_limit_exceeded);
+
+  std::array<ExecutionStepSpec, 1U> incompatible = specs;
+  incompatible[0].kernel = DenseKernelKind::relu_contiguous_f32;
+  require_error(
+      ExecutionPlanVerifier::verify(
+          graph,
+          ExecutionPlanCandidate{
+              std::span<const ExecutionStepSpec>{incompatible},
+              std::span<const ArenaPlacement>{placements},
+          },
+          exact),
+      ErrorCode::plan_kernel_incompatible);
+}
+
+TK_TEST("Verified consecutive Softmax steps cannot overlap in place") {
+  GraphBuilder builder;
+  const ValueId input = unwrap(builder.input("x", f32({2, 3})));
+  const ValueId first = unwrap(builder.softmax(input));
+  const ValueId second = unwrap(builder.softmax(first));
+  static_cast<void>(unwrap(builder.output("result", second)));
+  const VerifiedGraph graph = unwrap(std::move(builder).finish());
+  const ExecutionPlan compiled =
+      unwrap(ExecutionPlanCompiler::run(graph));
+  TK_REQUIRE_EQ(compiled.steps().size(), 2U);
+  TK_REQUIRE_EQ(compiled.values()[first.ordinal()].storage().offset_bytes(),
+                0U);
+  TK_REQUIRE_EQ(compiled.values()[second.ordinal()].storage().offset_bytes(),
+                64U);
+
+  const std::array<ExecutionStepSpec, 2U> specs{{
+      {1U, DenseKernelKind::softmax_last_axis_f32},
+      {2U, DenseKernelKind::softmax_last_axis_f32},
+  }};
+  const std::array<ArenaPlacement, 2U> overlapping{{
+      {0U, 0U},
+      {1U, 0U},
+  }};
+  require_error(
+      ExecutionPlanVerifier::verify(
+          graph,
+          ExecutionPlanCandidate{
+              std::span<const ExecutionStepSpec>{specs},
+              std::span<const ArenaPlacement>{overlapping},
+          }),
+      ErrorCode::arena_live_overlap);
 }
 
 TK_TEST("Execution plan diagnostics expose stable typed names") {

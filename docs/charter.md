@@ -83,8 +83,9 @@ requires independent reverse agreement before returning it.
 
 A narrow executable slice of stages 6 through 8 is also implemented for the
 current dense row-major operators. `ExecutionPlanCompiler` selects contiguous
-or broadcast `Add`, rank-2 or batched `MatMul`, and contiguous `Relu` kernels,
-then submits only those choices and arena offsets to an independent verifier.
+or broadcast `Add`, rank-2 or batched `MatMul`, contiguous `Relu`, and
+last-axis `Softmax` kernels, then submits only those choices and arena offsets
+to an independent verifier. Valid non-last Softmax axes remain reference-only.
 The verifier reconstructs operands, layouts, storage, lifetimes, limits, and
 work accounting before it can return an owning plan. `ExecutionSession`
 allocates the verified workspace and executes the plan synchronously.

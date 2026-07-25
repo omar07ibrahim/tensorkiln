@@ -62,6 +62,7 @@ enum class DenseKernelKind : std::uint8_t {
   matmul_rank2_f32,
   matmul_batched_f32,
   relu_contiguous_f32,
+  softmax_last_axis_f32,
 };
 
 [[nodiscard]] std::string_view dense_kernel_kind_name(

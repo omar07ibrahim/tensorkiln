@@ -49,19 +49,22 @@ result has arena storage. The current kernel selection is exact:
 | `MatMul` with two rank-2 operands and a rank-2 result | `matmul_rank2_f32` |
 | every other valid rank-2 through rank-4 `MatMul` | `matmul_batched_f32` |
 | `Relu` | `relu_contiguous_f32` |
+| `Softmax` whose canonical axis is the final axis | `softmax_last_axis_f32` |
 
-Axis-aware `Softmax` is valid graph IR and is executable through the reference
-interpreter, but it does not have a dense kernel in this slice.
-`ExecutionPlanCompiler` and `ExecutionPlanVerifier` return
-`plan_operation_unsupported` before accepting a candidate for any graph that
-contains it. Graph arena storage lowering remains available because output
-size and lifetime reconstruction do not require a kernel.
+Axis-aware `Softmax` remains valid graph IR for every rank-valid axis and is
+executable through the reference interpreter. The optimized compiler and
+verifier support only the canonical last axis. They return
+`plan_operation_unsupported` before inspecting candidate steps or placements
+when any valid non-last Softmax is present. Graph arena storage lowering
+remains axis-agnostic because output size and lifetime reconstruction do not
+require a kernel.
 
 Plan preflight bounds values, steps, outputs, owned constant bytes, scalar
 steps, arena buffers, and workspace bytes before execution state is allocated.
-Arena offsets remain 64-byte aligned. There are no views, in-place aliases,
-kernel scratch regions, prepacked constants, or kernel-side temporary
-allocations in this slice.
+Forward analysis and the independent reverse verifier each derive checked
+`3 * numel` work for an accepted last-axis Softmax. Arena offsets remain
+64-byte aligned. There are no views, in-place aliases, kernel scratch regions,
+prepacked constants, or kernel-side temporary allocations in this slice.
 
 ## Session lifecycle
 
@@ -96,9 +99,11 @@ std::optional<tensorkiln::TensorView> output = result->output("result");
 ```
 
 `ExecutionSession::create()` allocates the workspace, value and binding pointer
-tables, result-lifetime state, and, when requested, the write-audit shadow. The
-session borrows the immutable plan; that plan must not be moved or destroyed
-until the session is destroyed.
+tables, result-lifetime state, and, when requested, the write-audit shadow. For
+a plan containing last-axis Softmax, creation also performs one non-foldable
+`std::exp(0)` call so any process-local math-library initialization occurs
+before the allocation-free `run()` boundary. The session borrows the immutable
+plan; that plan must not be moved or destroyed until the session is destroyed.
 
 A session is deliberately single-threaded. Independent sessions may share one
 immutable plan and execute concurrently because each owns separate mutable
@@ -148,7 +153,16 @@ interpreter. Both `MatMul` kernels visit the reduction dimension in increasing
 order, multiply and accumulate in binary64, round every reduction step to
 binary64 on targets whose evaluation format is wider, and convert once to
 binary32 at the output boundary. Fused contraction is disabled by the build.
-The complete arithmetic policy is in [numerics.md](numerics.md).
+
+`softmax_last_axis_f32` visits contiguous slices and coordinates in increasing
+row-major order. It applies the documented NaN, positive-infinity, and
+all-negative-infinity precedence before the ordinary subtract-maximum path.
+The finite path writes each binary32-rounded `std::exp` result into the output
+payload, accumulates those rounded numerators in binary64 with the same
+excess-precision barrier, and normalizes them in place. The verified arena
+lifetimes and external-binding checks ensure that the input and output payloads
+do not overlap; the kernel implements no in-place-input mode. The complete
+arithmetic policy is in [numerics.md](numerics.md).
 
 ## Memory integrity
 
@@ -177,8 +191,11 @@ release-profile allocation executable wraps global `new`/`new[]` and the C
 `malloc`, `calloc`, `realloc`, `aligned_alloc`, and `posix_memalign` entry
 points. With the counter armed, it executes:
 
-- the first and a repeated run after session creation and binding;
-- all five kernel kinds;
+- the first and a repeated run after session creation and binding for the five
+  algebraic kernel kinds;
+- a cold non-foldable `std::exp(0)` initialization during Softmax session
+  creation, before the measured boundary;
+- first and repeated warm last-axis Softmax runs with the counter armed;
 - both regular and per-kernel-audited sessions;
 - result lookup and payload observation;
 - an audited external-input-only plan with zero workspace and zero kernels.
@@ -186,16 +203,19 @@ points. With the counter armed, it executes:
 The probe is part of `make PROFILE=release test`. It is evidence about the
 instrumented synchronous run/result path, not a general statement about graph
 building, plan compilation, session creation, binding failures, the standard
-library, or user callbacks.
+library, cold transcendental-library initialization, or user callbacks.
 
 ## Differential and portability evidence
 
 The deterministic suite includes hand-calculated fixtures, exact diagnostic
 boundaries, regular and audited sessions, lifetime invalidation, outer-guard
 and in-arena fault injection, and a seeded corpus of 128 DAGs. The corpus uses
-audited sessions while exercising every current kernel, arena reuse, and
+audited sessions while exercising the five algebraic kernels, arena reuse, and
 raw-bit output agreement with the independently implemented
-`ReferenceInterpreter`.
+`ReferenceInterpreter`. A separate seeded last-axis Softmax corpus uses the
+documented tolerance, normalized-slice checks, and translation invariance; it
+does not extend the five-kernel raw-bit claim across `std::exp`
+implementations.
 
 The full release suite is also executable as a real 32-bit i386/x87 gate on a
 multilib host:

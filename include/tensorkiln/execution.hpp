@@ -101,8 +101,9 @@ class ExecutionResultView final {
 
 // A session borrows one immutable ExecutionPlan, which must not be moved or
 // destroyed while the session exists. Session construction allocates all
-// workspace and pointer metadata. bind() performs validation outside the hot
-// path; a successful run() is synchronous, noexcept, and heap-allocation-free.
+// workspace and pointer metadata and prewarms any plan-required transcendental
+// runtime. bind() performs validation outside the hot path; a successful run()
+// is synchronous, noexcept, and heap-allocation-free.
 // One session is deliberately not thread-safe, while independent sessions may
 // execute the same plan concurrently. A moved-from session supports only
 // destruction; all observers and operations require a non-moved-from object.
