@@ -1632,6 +1632,272 @@ def output_uses_softmax_bundle(output_dir: Path) -> bool:
     )
 
 
+def _validate_recorded_generator(
+    generator: object,
+) -> dict[str, object]:
+    """Verify the exact committed generator that produced a v2 capture."""
+
+    if not isinstance(generator, dict) or set(generator) != {
+        "bytes",
+        "commit",
+        "committed",
+        "git_blob",
+        "path",
+        "sha256",
+        "tree",
+    }:
+        raise VisualEvidenceError(
+            "committed evidence has malformed generator provenance"
+        )
+    if (
+        generator.get("committed") is not True
+        or generator.get("path") != GENERATOR_PATH
+    ):
+        raise VisualEvidenceError(
+            "committed evidence generator is not a committed renderer"
+        )
+
+    byte_length = generator.get("bytes")
+    sha256 = generator.get("sha256")
+    commit = generator.get("commit")
+    tree = generator.get("tree")
+    blob = generator.get("git_blob")
+    if (
+        type(byte_length) is not int
+        or byte_length <= 0
+        or byte_length > MAX_SOURCE_BYTES
+        or not isinstance(sha256, str)
+        or re.fullmatch(r"[0-9a-f]{64}", sha256) is None
+    ):
+        raise VisualEvidenceError(
+            "committed evidence generator has malformed byte provenance"
+        )
+
+    object_format = _git_text(
+        ("rev-parse", "--show-object-format"), "Git object format"
+    )
+    object_length = {"sha1": 40, "sha256": 64}.get(object_format)
+    if object_length is None:
+        raise VisualEvidenceError(
+            f"unsupported Git object format: {object_format}"
+        )
+    object_pattern = re.compile(rf"^[0-9a-f]{{{object_length}}}$")
+    if not all(
+        isinstance(value, str) and object_pattern.fullmatch(value)
+        for value in (commit, tree, blob)
+    ):
+        raise VisualEvidenceError(
+            "committed evidence generator has malformed Git provenance"
+        )
+
+    assert isinstance(commit, str)
+    assert isinstance(tree, str)
+    assert isinstance(blob, str)
+    shallow = _git_text(
+        ("rev-parse", "--is-shallow-repository"),
+        "Git shallow-repository state",
+    )
+    if shallow not in {"false", "true"}:
+        raise VisualEvidenceError(
+            "Git reported a malformed shallow-repository state"
+        )
+    if shallow == "true":
+        return generator
+
+    _run_git(("merge-base", "--is-ancestor", commit, "HEAD"))
+    recorded_tree = _git_text(
+        ("show", "-s", "--format=%T", commit),
+        "recorded generator tree",
+    )
+    _mode, recorded_blob = _tree_blob_record(
+        commit, GENERATOR_PATH, object_pattern
+    )
+    payload = _run_git(("show", f"{commit}:{GENERATOR_PATH}"))
+    if (
+        recorded_tree != tree
+        or recorded_blob != blob
+        or len(payload) != byte_length
+        or hashlib.sha256(payload).hexdigest() != sha256
+    ):
+        raise VisualEvidenceError(
+            "committed evidence generator does not match its Git objects"
+        )
+    return generator
+
+
+def _preserve_recorded_repository_source(
+    recorded: object, current: object
+) -> dict[str, object]:
+    """Verify current inputs before retaining their historical capture commit."""
+
+    expected_keys = {
+        "commit",
+        "object_format",
+        "selection",
+        "source_files",
+        "tree",
+    }
+    if (
+        not isinstance(recorded, dict)
+        or not isinstance(current, dict)
+        or set(recorded) != expected_keys
+        or set(current) != expected_keys
+        or recorded.get("object_format") != current.get("object_format")
+        or recorded.get("selection") != current.get("selection")
+    ):
+        raise VisualEvidenceError(
+            "committed evidence has malformed repository-source provenance"
+        )
+    if recorded.get("source_files") != current.get("source_files"):
+        raise VisualEvidenceError(
+            "current evidence build inputs differ from the recorded capture"
+        )
+
+    object_format = recorded["object_format"]
+    object_length = {"sha1": 40, "sha256": 64}.get(object_format)
+    if object_length is None:
+        raise VisualEvidenceError(
+            f"unsupported Git object format: {object_format}"
+        )
+    object_pattern = re.compile(rf"^[0-9a-f]{{{object_length}}}$")
+    commit = recorded.get("commit")
+    tree = recorded.get("tree")
+    if not all(
+        isinstance(value, str) and object_pattern.fullmatch(value)
+        for value in (commit, tree)
+    ):
+        raise VisualEvidenceError(
+            "committed evidence repository source has malformed Git provenance"
+        )
+
+    shallow = _git_text(
+        ("rev-parse", "--is-shallow-repository"),
+        "Git shallow-repository state",
+    )
+    if shallow not in {"false", "true"}:
+        raise VisualEvidenceError(
+            "Git reported a malformed shallow-repository state"
+        )
+    if shallow == "false":
+        assert isinstance(commit, str)
+        assert isinstance(tree, str)
+        _run_git(("merge-base", "--is-ancestor", commit, "HEAD"))
+        recorded_tree = _git_text(
+            ("show", "-s", "--format=%T", commit),
+            "recorded repository-source tree",
+        )
+        if recorded_tree != tree:
+            raise VisualEvidenceError(
+                "committed evidence repository source has the wrong Git tree"
+            )
+
+    current["commit"] = commit
+    current["tree"] = tree
+    return current
+
+
+def _recorded_binary_fields(
+    source: object, binary_name: str
+) -> tuple[int, str]:
+    """Read bounded historical binary metadata without claiming reproduction."""
+
+    if not isinstance(source, dict) or source.get("binary") != binary_name:
+        raise VisualEvidenceError(
+            f"committed evidence has malformed {binary_name} source metadata"
+        )
+    byte_length = source.get("binary_bytes")
+    sha256 = source.get("binary_sha256")
+    if (
+        type(byte_length) is not int
+        or byte_length <= 0
+        or byte_length > MAX_BINARY_BYTES
+        or not isinstance(sha256, str)
+        or re.fullmatch(r"[0-9a-f]{64}", sha256) is None
+    ):
+        raise VisualEvidenceError(
+            f"committed evidence has malformed {binary_name} binary provenance"
+        )
+    return byte_length, sha256
+
+
+def preserve_recorded_capture_provenance(
+    recorded: object, current: object
+) -> dict[str, object]:
+    """Keep historical generator/ELF identities during cross-toolchain checks.
+
+    The current verifier still reconstructs every deterministic transcript,
+    SVG, source identity, and non-capture manifest field. Compiler-specific
+    executable bytes and the generator that performed the original capture
+    remain historical facts instead of being falsely required to reproduce
+    across GCC/Clang builds.
+    """
+
+    if (
+        not isinstance(recorded, dict)
+        or not isinstance(current, dict)
+        or recorded.get("schema") != "tensorkiln.readme-visual-evidence.v2"
+        or current.get("schema") != "tensorkiln.readme-visual-evidence.v2"
+    ):
+        raise VisualEvidenceError(
+            "cannot reconcile non-v2 visual evidence provenance"
+        )
+    current["generator"] = _validate_recorded_generator(
+        recorded.get("generator")
+    )
+    current["repository_source"] = _preserve_recorded_repository_source(
+        recorded.get("repository_source"),
+        current.get("repository_source"),
+    )
+
+    recorded_sources = recorded.get("sources")
+    current_sources = current.get("sources")
+    if not isinstance(recorded_sources, dict) or not isinstance(
+        current_sources, dict
+    ):
+        raise VisualEvidenceError(
+            "committed evidence has malformed source provenance"
+        )
+    for binary_name in ("execute_graph", "execute_softmax", "plan_arena"):
+        recorded_source = recorded_sources.get(binary_name)
+        current_source = current_sources.get(binary_name)
+        if not isinstance(current_source, dict):
+            raise VisualEvidenceError(
+                f"current evidence has malformed {binary_name} source metadata"
+            )
+        byte_length, sha256 = _recorded_binary_fields(
+            recorded_source, binary_name
+        )
+        current_source["binary_bytes"] = byte_length
+        current_source["binary_sha256"] = sha256
+    return current
+
+
+def _normalize_manifest_for_check(current: bytes, expected: bytes) -> bytes:
+    """Retain capture-only provenance while checking all reproducible fields."""
+
+    try:
+        recorded_manifest = json.loads(current)
+        expected_manifest = json.loads(expected)
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise VisualEvidenceError(
+            "visual evidence manifest is not valid UTF-8 JSON"
+        ) from error
+    if not isinstance(recorded_manifest, dict) or not isinstance(
+        expected_manifest, dict
+    ):
+        raise VisualEvidenceError(
+            "visual evidence manifest must be a JSON object"
+        )
+    if recorded_manifest.get("schema") != "tensorkiln.readme-visual-evidence.v2":
+        return expected
+    normalized = preserve_recorded_capture_provenance(
+        recorded_manifest, expected_manifest
+    )
+    return (
+        json.dumps(normalized, indent=2, sort_keys=True) + "\n"
+    ).encode("utf-8")
+
+
 def check_visuals(output_dir: Path, generated: dict[str, str]) -> int:
     """Return nonzero if committed visuals are absent or stale."""
 
@@ -1648,6 +1914,8 @@ def check_visuals(output_dir: Path, generated: dict[str, str]) -> int:
             raise VisualEvidenceError(f"cannot read {path}: {error}") from error
 
         expected = text.encode("utf-8")
+        if filename == "manifest.json":
+            expected = _normalize_manifest_for_check(current, expected)
         if current != expected:
             current_digest = hashlib.sha256(current).hexdigest()[:12]
             expected_digest = hashlib.sha256(expected).hexdigest()[:12]

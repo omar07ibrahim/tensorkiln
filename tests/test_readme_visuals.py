@@ -547,6 +547,44 @@ class CommittedSoftmaxEvidenceTests(unittest.TestCase):
             "examples/execute_softmax.cpp",
             manifest["repository_source"]["source_files"],
         )
+        visuals._validate_recorded_generator(manifest["generator"])
+
+        current = json.loads(json.dumps(manifest))
+        current["generator"] = {
+            **current["generator"],
+            "commit": "0" * len(current["generator"]["commit"]),
+        }
+        current["repository_source"] = {
+            **current["repository_source"],
+            "commit": "0" * len(
+                current["repository_source"]["commit"]
+            ),
+            "tree": "0" * len(current["repository_source"]["tree"]),
+        }
+        for source in current["sources"].values():
+            source["binary_bytes"] += 1
+            source["binary_sha256"] = "0" * 64
+        normalized = visuals.preserve_recorded_capture_provenance(
+            manifest, current
+        )
+        self.assertEqual(normalized["generator"], manifest["generator"])
+        self.assertEqual(
+            normalized["repository_source"],
+            manifest["repository_source"],
+        )
+        for binary_name in (
+            "execute_graph",
+            "execute_softmax",
+            "plan_arena",
+        ):
+            self.assertEqual(
+                normalized["sources"][binary_name]["binary_bytes"],
+                manifest["sources"][binary_name]["binary_bytes"],
+            )
+            self.assertEqual(
+                normalized["sources"][binary_name]["binary_sha256"],
+                manifest["sources"][binary_name]["binary_sha256"],
+            )
 
         for filename, record in manifest["artifacts"].items():
             payload = (evidence_dir / filename).read_bytes()
