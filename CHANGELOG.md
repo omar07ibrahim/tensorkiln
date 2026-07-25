@@ -40,7 +40,10 @@ in progress.
   five algebraic kernels plus warm last-axis Softmax, regular and audited
   sessions, zero-work execution, and both the first and repeated `run()` paths;
 - an audited executable example that prints its verified plan and requires
-  exact agreement with independent reference execution.
+  exact agreement with independent reference execution;
+- a self-verifying public-API Softmax example that exposes the optimized
+  last-axis plan, deterministic non-finite output bits, narrow fixture-level
+  reference agreement, and the typed reference-only non-last-axis boundary.
 
 ### Changed
 

@@ -38,6 +38,17 @@ comparison with the separately implemented reference interpreter. The
 [SHA-256 evidence manifest](docs/visuals/generated/manifest.json) are committed
 beside the image.
 
+The separate
+[`execute_softmax`](examples/execute_softmax.cpp) example exercises a verified
+last-axis `softmax_last_axis_f32` plan in audited mode. It prints the raw output
+bits for five deliberately exact policy slices, requires all 20 bits to agree
+with both the independent interpreter and an explicit fixture, then
+reference-executes a valid axis-zero graph and shows its typed rejection by the
+optimized planner. This narrow fixture covers equal finite inputs and the
+documented NaN/infinity branches; it does not claim that arbitrary finite
+`std::exp` results are bit-identical across math libraries, and it is not a
+benchmark.
+
 Rebuild and byte-check every generated visual with the standard-library-only
 renderer:
 
@@ -169,7 +180,7 @@ inspection.*
 [![TensorKiln clean-clone reproduction and validation workflow](docs/visuals/reproduce.svg)](docs/visuals/reproduce.svg)
 
 *The primary release target compiles and checks the current slice, exercises
-all three evidence-producing examples, probes allocation-free execution, and
+every checked example, probes allocation-free execution, and
 rejects stale generated visuals. Sanitizer and independent-fixture checks stay
 explicit so each failure has a narrow meaning.*
 
@@ -189,15 +200,18 @@ v1.0.0. See the
 [alpha release notes](docs/releases/v0.1.0-alpha.1.md) and
 [changelog](CHANGELOG.md) for the shipped boundary and known limitations.
 
-The debug and release commands run the strict dependency-free suite and all
-three checked examples. Release additionally runs the allocation probe and
+The debug and release commands run the strict dependency-free suite and every
+checked example. Release additionally runs the allocation probe and
 rejects stale generated visuals. The examples inspect the graph-rewrite
 pipeline, show verified interval reuse, and execute an audited
 `MatMul -> Add -> Relu` plan while requiring raw-bit agreement with the
-independent interpreter. The sanitizer target runs the same suite under
-AddressSanitizer and UndefinedBehaviorSanitizer; the oracle target proves that
-both committed numerical fixtures still match their independent generators. See
-[the graph IR contract](docs/ir.md) for construction invariants and
+independent interpreter. A separate audited Softmax example exposes the
+last-axis kernel, exact non-finite policy, independent-reference agreement, and
+the reference-only non-last-axis boundary. The sanitizer target runs the same
+suite under AddressSanitizer and UndefinedBehaviorSanitizer; the oracle target
+proves that both committed numerical fixtures still match their independent
+generators. See [the graph IR contract](docs/ir.md) for construction invariants
+and
 [the reference interpreter contract](docs/reference.md) for execution,
 resource, lifetime, and numerical semantics. See
 [the compiler-pass contract](docs/compiler.md) for dead-code roots, semantic

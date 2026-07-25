@@ -217,6 +217,31 @@ documented tolerance, normalized-slice checks, and translation invariance; it
 does not extend the five-kernel raw-bit claim across `std::exp`
 implementations.
 
+### Runnable Softmax boundary
+
+The self-verifying
+[`execute_softmax`](../examples/execute_softmax.cpp) example composes the public
+graph, plan, session, result-view, and reference APIs in one inspected path. It
+compiles a `f32[5,4]` last-axis graph to one
+`softmax_last_axis_f32` step, checks the step's 60-unit `3 * numel` work charge
+and 128-byte workspace, then runs it with kernel-write auditing enabled.
+
+Its five slices deliberately have exact expected outputs: equal finite values,
+NaN taking precedence over positive infinity, equal mass across positive
+infinities, an all-negative-infinity slice, and finite values mixed with
+negative infinity. The example prints raw `f32` bits only after the executor,
+independent interpreter, and explicit 20-element fixture all agree. This is a
+bit-exact claim about that constructed fixture, not arbitrary finite Softmax:
+the seeded corpus and general finite comparisons retain the tolerance and
+normalization rules in [the numerical policy](numerics.md).
+
+The same executable constructs a graph-valid axis-zero Softmax, executes it
+through the reference interpreter, and requires plan compilation to return
+`plan_operation_unsupported` with the stable axis and node diagnostic. Its
+reference total is 80 scalar steps: 20 for input materialization plus 60 for
+Softmax. The optimized plan reports only the 60 kernel steps. The output is
+deterministic correctness evidence, not a benchmark.
+
 The full release suite is also executable as a real 32-bit i386/x87 gate on a
 multilib host:
 
