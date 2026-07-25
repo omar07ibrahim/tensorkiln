@@ -1,0 +1,13 @@
+=== verified Softmax execution ===
+scope: deterministic correctness example; not a benchmark
+plan {shape=f32[5,4], axis=1, kernel=softmax_last_axis_f32, scalar_steps=60, workspace_bytes=128, audited=true}
+slice finite_equal bits=[0x3e800000, 0x3e800000, 0x3e800000, 0x3e800000]
+slice nan_precedence bits=[0x7fc00000, 0x7fc00000, 0x7fc00000, 0x7fc00000]
+slice positive_infinity_split bits=[0x3f000000, 0x00000000, 0x3f000000, 0x00000000]
+slice all_negative_infinity bits=[0x7fc00000, 0x7fc00000, 0x7fc00000, 0x7fc00000]
+slice mixed_negative_infinity bits=[0x00000000, 0x3f000000, 0x3f000000, 0x00000000]
+agreement {executor_reference_bits=20/20, executor_fixture_bits=20/20}
+=== optimized axis boundary ===
+reference_axis0 {status=accepted, scalar_steps=80}
+optimized_axis0 {code=plan_operation_unsupported, message=plan backend does not support softmax axis 0 at #n1}
+verified: last-axis execution and reference agree; valid axis 0 remains reference-only

@@ -44,10 +44,20 @@ last-axis `softmax_last_axis_f32` plan in audited mode. It prints the raw output
 bits for five deliberately exact policy slices, requires all 20 bits to agree
 with both the independent interpreter and an explicit fixture, then
 reference-executes a valid axis-zero graph and shows its typed rejection by the
-optimized planner. This narrow fixture covers equal finite inputs and the
-documented NaN/infinity branches; it does not claim that arbitrary finite
-`std::exp` results are bit-identical across math libraries, and it is not a
-benchmark.
+optimized planner.
+
+[![Complete output from the crafted TensorKiln Softmax correctness example](docs/visuals/generated/execute-softmax.svg)](docs/visuals/generated/execute-softmax.svg)
+
+This is the complete stdout of the real release executable. The
+[plain-text Softmax transcript](docs/visuals/generated/execute-softmax.txt)
+shows 60 optimized kernel steps, 80 total reference steps for the axis-zero
+case, both 20/20 bit-agreement checks, and the typed reference-only boundary.
+This narrow fixture covers equal finite inputs and the documented NaN/infinity
+branches; it does not claim that arbitrary finite `std::exp` results are
+bit-identical across math libraries, and it is not a benchmark. The
+[evidence manifest](docs/visuals/generated/manifest.json) binds the complete
+transcript and image to SHA-256 hashes of the captured executable and to the
+commit, tree, and Git blob IDs of every declared build input.
 
 Rebuild and byte-check every generated visual with the standard-library-only
 renderer:

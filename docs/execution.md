@@ -242,6 +242,24 @@ reference total is 80 scalar steps: 20 for input materialization plus 60 for
 Softmax. The optimized plan reports only the 60 kernel steps. The output is
 deterministic correctness evidence, not a benchmark.
 
+[![Complete crafted Softmax release transcript](visuals/generated/execute-softmax.svg)](visuals/generated/execute-softmax.svg)
+
+The committed [raw transcript](visuals/generated/execute-softmax.txt) is the
+complete stdout from that release executable, captured with closed stdin, an
+empty stderr requirement, a fixed `C` locale and UTC timezone, and a 30-second
+timeout. The [evidence manifest](visuals/generated/manifest.json) records the
+executable and stdout SHA-256 digests, the selected source commit and tree, and
+the Git blob ID plus SHA-256 digest of each Makefile, header, implementation,
+and example input used by the evidence build.
+
+The source revision is the latest commit touching that complete build-input
+set, rather than the later commit that stores the evidence itself. This avoids
+a self-referential manifest while still making source drift fail the
+byte-for-byte check. The manifest does not attest the compiler, operating
+system, binary supply chain, or network isolation. Its bit-exact statement is
+only about the five crafted slices printed in the panel; it is not an
+arbitrary-input, cross-libm, or performance claim.
+
 The full release suite is also executable as a real 32-bit i386/x87 gate on a
 multilib host:
 

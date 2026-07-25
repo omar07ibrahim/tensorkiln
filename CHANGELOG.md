@@ -43,7 +43,10 @@ in progress.
   exact agreement with independent reference execution;
 - a self-verifying public-API Softmax example that exposes the optimized
   last-axis plan, deterministic non-finite output bits, narrow fixture-level
-  reference agreement, and the typed reference-only non-last-axis boundary.
+  reference agreement, and the typed reference-only non-last-axis boundary;
+- a commit-bound Softmax terminal evidence bundle with the complete raw
+  release transcript, a derived SVG panel, executable and artifact digests,
+  and source commit, tree, and blob provenance.
 
 ### Changed
 

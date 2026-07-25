@@ -11,22 +11,375 @@
     },
     "execute-graph.txt": {
       "sha256": "831194f4d7019e85ba32c7e2355dfc49b4caa3f4b1ae7b9db47b75bdae85a2e4"
+    },
+    "execute-softmax.svg": {
+      "sha256": "2499cbb7ddd1877aeb040a0522deeab01ce4aff217c4af602b1289243c22f341"
+    },
+    "execute-softmax.txt": {
+      "sha256": "a8fde11bd37ec79801fd9c7d8f370501b2d4197dbd5816ff6f461c7469ae5898"
     }
   },
-  "generator": "tools/render_readme_visuals.py",
+  "capture_contract": {
+    "complete_stdout": true,
+    "environment": {
+      "LANG": "C",
+      "LC_ALL": "C",
+      "TZ": "UTC"
+    },
+    "exit_status": 0,
+    "network_isolation": "not claimed",
+    "stderr": "empty",
+    "stdin": "closed",
+    "timeout_seconds": 30
+  },
+  "claim_boundary": [
+    "execute_softmax is crafted five-slice correctness evidence with 20/20 executor-reference and 20/20 executor-fixture bit agreements",
+    "the optimized last-axis kernel reports 60 scalar steps; the axis-zero reference path reports 80 total scalar steps and remains unsupported by the optimized planner",
+    "the Softmax bit-exact claim is limited to the committed f32[5,4] fixture, not arbitrary finite inputs or libm implementations",
+    "these deterministic correctness examples are not benchmarks or performance measurements",
+    "source blobs and captured executable bytes are hashed; the compiler, operating system, and binary supply chain are not attested"
+  ],
+  "generator": {
+    "bytes": 61111,
+    "commit": "68fffce6c0e46587fc101f785d319fd2248936e8",
+    "committed": true,
+    "git_blob": "1b943035438d662c8488ccbf5f0669a6147122e5",
+    "path": "tools/render_readme_visuals.py",
+    "sha256": "e77ebacbdcdab6b40c5ddd7ce6a61d98e0e762f5d11eb811ca7e975680475dec",
+    "tree": "c72c90888e8e2f5a8204a4ebb7d0865197940640"
+  },
+  "repository_source": {
+    "commit": "3cb7f3c8ca87f6e0fea6fd3c6dae942fc184ab64",
+    "object_format": "sha1",
+    "selection": "latest commit touching the complete evidence build-input set",
+    "source_files": {
+      "Makefile": {
+        "bytes": 6587,
+        "git_blob": "65907581e15c1ee648280ba27d4d062d056d888b",
+        "mode": "100644",
+        "sha256": "5b77db78de2454cb3aeaca83d89bed130b011e836d9ade957a2b1ec5702123d6"
+      },
+      "examples/execute_graph.cpp": {
+        "bytes": 6511,
+        "git_blob": "103bb312fae589f5dd4d3338166fdea52eb02a49",
+        "mode": "100644",
+        "sha256": "56d21cacf01182cd020994bd9cf2f39ff4fd09b0c87c0896ad652cace863bab8"
+      },
+      "examples/execute_softmax.cpp": {
+        "bytes": 11603,
+        "git_blob": "e1b41dd355a9816ed605ef977b1b14abab03cbec",
+        "mode": "100644",
+        "sha256": "4a7adf78c94acf9fb4510d67c2d8611b4ffcf3a8c953b110adb60093d27d2b95"
+      },
+      "examples/plan_arena.cpp": {
+        "bytes": 3517,
+        "git_blob": "151eb3dd0308c9b3e2da057a19d5f4910ab219ed",
+        "mode": "100644",
+        "sha256": "6dc2a917e9090b9e302abded55c914870912c0924b1f4b2fa9042c5136bf7d4a"
+      },
+      "include/tensorkiln/arena.hpp": {
+        "bytes": 4140,
+        "git_blob": "1f11ddf58008392ac841f0741b3f7004aa73c80f",
+        "mode": "100644",
+        "sha256": "c44c8bb57bbe3c1874076177909c6fecb465b12047778b1e36b8ada51bb74025"
+      },
+      "include/tensorkiln/dead_code_elimination.hpp": {
+        "bytes": 1920,
+        "git_blob": "93cde133881b80c941d208136328031649869350",
+        "mode": "100644",
+        "sha256": "4d3b92443b106b67f66b809fdb0c47cf0c192ddadb3ddc5aceea82a376f0ff59"
+      },
+      "include/tensorkiln/diagnostic.hpp": {
+        "bytes": 2002,
+        "git_blob": "2c969ebbba8ade20b508d8accb86d92a7529ed67",
+        "mode": "100644",
+        "sha256": "899429eebce9deb5b4cf485aa37531c5f1ae98997155883c48f586a03b87795e"
+      },
+      "include/tensorkiln/execution.hpp": {
+        "bytes": 5123,
+        "git_blob": "eba553e3e78933252dd35512ff002c592c3b501c",
+        "mode": "100644",
+        "sha256": "c4a50223985e8b971b391402f372cdb4010593a0486ed36977a707b3c5af1594"
+      },
+      "include/tensorkiln/execution_plan.hpp": {
+        "bytes": 8229,
+        "git_blob": "1c676064a88d8db1f2a832f9ef0a9eb7616bcd04",
+        "mode": "100644",
+        "sha256": "71f137bff71336de2eff8769ba2e75ad69948bee0e28a6feb8c829c2d26b41f7"
+      },
+      "include/tensorkiln/graph.hpp": {
+        "bytes": 6727,
+        "git_blob": "9d5294dd00093530502c54ca9bb9327779b16b9a",
+        "mode": "100644",
+        "sha256": "47ca15b15ca090de4cd37fa21aef600d80f8415fb08aef746be0844b248e7048"
+      },
+      "include/tensorkiln/graph_arena.hpp": {
+        "bytes": 5235,
+        "git_blob": "0f527634f680a1ece8ab39cfcabd681eeec1fee3",
+        "mode": "100644",
+        "sha256": "f8a8d774347974bbcd553e15f9572868ec08fc74713b90c2faa4d65c65fb3c23"
+      },
+      "include/tensorkiln/provenance.hpp": {
+        "bytes": 2323,
+        "git_blob": "b6727fb8f566f8d48653593d16b9126264244b34",
+        "mode": "100644",
+        "sha256": "399ed2dc17b5defe71393379650cc55f6ff0082f8b4de0028dd2883ea1cac397"
+      },
+      "include/tensorkiln/reference.hpp": {
+        "bytes": 2626,
+        "git_blob": "df581245bfd0fb3269d5f1eb6d215d7f81a02772",
+        "mode": "100644",
+        "sha256": "23694ee730852705afe7e4cc7746d54c2c4b91de313e1d5b430f466a59688c59"
+      },
+      "include/tensorkiln/result.hpp": {
+        "bytes": 1665,
+        "git_blob": "cd99f120b73dabc90adbc225775207b3ba18f76e",
+        "mode": "100644",
+        "sha256": "d22124bf2765195c1b9918db9739d136f22f1b22dbe7602f7d0f25bbb2820c99"
+      },
+      "include/tensorkiln/shape.hpp": {
+        "bytes": 1682,
+        "git_blob": "9506f1ccabb16b9ea5620583ad5e31a8cc5f465b",
+        "mode": "100644",
+        "sha256": "ce5350f449ce6aa0e308dee6d9a85dc3a88086bf61f1adaf6d8f0ad28d4cee68"
+      },
+      "include/tensorkiln/shape_inference.hpp": {
+        "bytes": 367,
+        "git_blob": "d6f806bcb07bf985cf9d2f509f62121b9becf3a5",
+        "mode": "100644",
+        "sha256": "c00d0a00fac8b11bfa7003b8b55ebca099b2bd16ec65b4b2ee584e7e72e86aa7"
+      },
+      "include/tensorkiln/structural_canonicalization.hpp": {
+        "bytes": 2038,
+        "git_blob": "729349e44f00ccdecea42cec48500707a280e39c",
+        "mode": "100644",
+        "sha256": "2db34653191e101352ad3e1a3d62e8969428534dcf7bcf47f169883ef8d79187"
+      },
+      "include/tensorkiln/tensor_type.hpp": {
+        "bytes": 1420,
+        "git_blob": "7ba61944b651a9ec7323373d455c5a64c4c1e9ae",
+        "mode": "100644",
+        "sha256": "5983bf97bbec8edcfd4662d8bd3fda5e5818594fc8e47f87bca133a10de25b4e"
+      },
+      "src/aligned_workspace.cpp": {
+        "bytes": 3218,
+        "git_blob": "fc9626a66440bbe11928d9fe175fc08ff887bed5",
+        "mode": "100644",
+        "sha256": "1203f392242cf6d1b8f2ee98023d716da3272a9caf50956a628494571a21f754"
+      },
+      "src/aligned_workspace.hpp": {
+        "bytes": 1179,
+        "git_blob": "15246aebb4648bae981507834747b96db75d8924",
+        "mode": "100644",
+        "sha256": "77d2e3f570c81a7a057465121239163f3616b44753cc611cfdc501ccf49a4287"
+      },
+      "src/arena.cpp": {
+        "bytes": 2820,
+        "git_blob": "22dcd00b3a5532d9cf29d847a2b3855a4fed8fbd",
+        "mode": "100644",
+        "sha256": "5744d43e183d2e94442bf32bcf7d6a44e8ec4c5749bf4a6bd87b00ec9127ecee"
+      },
+      "src/arena_planner.cpp": {
+        "bytes": 10958,
+        "git_blob": "45d6d89eb18380cca1a9efa9cc2fb5f2ea973a27",
+        "mode": "100644",
+        "sha256": "00637f97b5cf6f9c85e56eaf37c31220aeb4a5138637311ce813b19b77535616"
+      },
+      "src/arena_support.cpp": {
+        "bytes": 3970,
+        "git_blob": "a187491d8c7b3faf2106853110f8ec1ed9105b89",
+        "mode": "100644",
+        "sha256": "308944b735615d45747a7d649ef74d5f290e1902837b5cf00017996f21d4dcf3"
+      },
+      "src/arena_support.hpp": {
+        "bytes": 741,
+        "git_blob": "4a1492518e08e46450b23c931c9da72933ff8dca",
+        "mode": "100644",
+        "sha256": "5868b98e40093402628131bcc74b92931415a9bc27fae5e44e2190420e614d42"
+      },
+      "src/arena_verifier.cpp": {
+        "bytes": 11143,
+        "git_blob": "bef1472afafc5eed9cab2c1a7519048226b16a12",
+        "mode": "100644",
+        "sha256": "ad8183d4f7af60e7b4fdf85b523fb59515109019efdcd5a99a847102449bd373"
+      },
+      "src/compiler_support.cpp": {
+        "bytes": 8055,
+        "git_blob": "b6abfdcd5ec605d7455305fad18c83163b006bf9",
+        "mode": "100644",
+        "sha256": "4958ef2fd986023c582f870acd4d64dce17e603cb33b68e80e8071f979ebe124"
+      },
+      "src/compiler_support.hpp": {
+        "bytes": 969,
+        "git_blob": "e1640c8ea800537b61f27959f35eb245c10460e6",
+        "mode": "100644",
+        "sha256": "1b1571e384bb715b27701547ee9a4a8eeabacb105b09178b3d1ffd83768cafb4"
+      },
+      "src/dead_code_elimination.cpp": {
+        "bytes": 10015,
+        "git_blob": "878dcdfea21d370c5944ab49d5a9ed2ba12a3fab",
+        "mode": "100644",
+        "sha256": "afda873a8da28b15f1aef1b5bf0e220cf701079b2e3f046fa6348daea9590c74"
+      },
+      "src/diagnostic.cpp": {
+        "bytes": 5201,
+        "git_blob": "528e6877feac4f5c8c4b7d89070f04aabd1fca4e",
+        "mode": "100644",
+        "sha256": "ed4fcfd7cb79c3cd3e9d55186e89f9039318bc14882c4d49312cc0af75dddc53"
+      },
+      "src/execution.cpp": {
+        "bytes": 18443,
+        "git_blob": "029a8f273a804d3e52f20c8cfc315d92afee0252",
+        "mode": "100644",
+        "sha256": "59fd1fe2f49145fac500d8c7b0030e5d92fcdc2dc6cf88b27541573bc11cc530"
+      },
+      "src/execution_internal.hpp": {
+        "bytes": 432,
+        "git_blob": "c5bae2cbd22547d635ed7bd333f2ec1b06e5dc3e",
+        "mode": "100644",
+        "sha256": "e67182aed37c9c37ff27b90d28863f757bda5dbc4cc2e47dd551d9a3d3ccd383"
+      },
+      "src/execution_kernels.cpp": {
+        "bytes": 16060,
+        "git_blob": "1af3626269ca4c5c51b1184b9b88ec0c0a0b9ce4",
+        "mode": "100644",
+        "sha256": "be7a64a64392a99c3cfada61291d60090b1c6a095d533e9cb217188bbe6b65ec"
+      },
+      "src/execution_kernels.hpp": {
+        "bytes": 684,
+        "git_blob": "d95204cf5ffcc6fd94b9c0c48028afa1d273901d",
+        "mode": "100644",
+        "sha256": "750c325001a823c003d7d81c996887544c9e7b622c2dc0d12a188c2806e56025"
+      },
+      "src/execution_plan.cpp": {
+        "bytes": 7808,
+        "git_blob": "d02320e6564ccb3767f1016d5b8fb198cbe996af",
+        "mode": "100644",
+        "sha256": "00091fc84e13abb47c8459023f3fa95e105a582d195cf887c51deb3d99c66400"
+      },
+      "src/execution_plan_compiler.cpp": {
+        "bytes": 5450,
+        "git_blob": "9c1db5f51f3bc58d91a9df10f7426799bc3ee965",
+        "mode": "100644",
+        "sha256": "e02aa5648d1f27926ceaca6099b1b87bcf6025bf73927942cd49075d2029c042"
+      },
+      "src/execution_plan_support.cpp": {
+        "bytes": 12374,
+        "git_blob": "c99b1c87e8d2ed6da3e60f2ba6747efdc47ff79b",
+        "mode": "100644",
+        "sha256": "0268a7e0d618bd79bb9b4ec3466818d2399fcacec4739dd0af7134f75e864ff6"
+      },
+      "src/execution_plan_support.hpp": {
+        "bytes": 1006,
+        "git_blob": "d66e2de38623822c58118c4cfc85d5418af2f1ae",
+        "mode": "100644",
+        "sha256": "1988ed2602cdd1dbc78b503db617eb9423591ec8394380db0d700f67bb89343f"
+      },
+      "src/execution_plan_verifier.cpp": {
+        "bytes": 14254,
+        "git_blob": "c6000740b1b971e5c30094cb9021cd02a5f46251",
+        "mode": "100644",
+        "sha256": "e1dcf040a409e9f94682aff6e39556df26032fd9cc25e122c02ceead0e355e3e"
+      },
+      "src/float_bits.hpp": {
+        "bytes": 424,
+        "git_blob": "3b8b3e8beb1fb489e66cdd93dd00272889a9c9f0",
+        "mode": "100644",
+        "sha256": "b49d83de3108ab7508b09ad55ba4ccd85c449f2a8c42f9060b2f8c43356b3dc9"
+      },
+      "src/graph.cpp": {
+        "bytes": 18938,
+        "git_blob": "6ea681b065b1a0e854c2565114df37fb01789a8b",
+        "mode": "100644",
+        "sha256": "e58a3a3a36ec02c70af6d54014ba9263ce547a0468a3658f34402fbe63b1bdb8"
+      },
+      "src/graph_arena.cpp": {
+        "bytes": 3067,
+        "git_blob": "1e08c6882a08d543048fa62fa42b739876b9cfd5",
+        "mode": "100644",
+        "sha256": "3c741cc863b0904080f5080398e5b63ee7303cec91e986218eca7ced44874ea1"
+      },
+      "src/graph_arena_lowering.cpp": {
+        "bytes": 13339,
+        "git_blob": "d12d1e0b6fce1d1d35361bb8e48df8024415914b",
+        "mode": "100644",
+        "sha256": "992411c16b96741a845618d87ce21145d982c1dafc336ed4bb83fe5f3ba2dd7d"
+      },
+      "src/graph_arena_lowering_internal.hpp": {
+        "bytes": 475,
+        "git_blob": "33effec03ce1cec047eb6cc7c1ef33adbd23c59d",
+        "mode": "100644",
+        "sha256": "3959484b4a4a9d14bc537993db10e50b6798ddae11cb7b919c4b71e683411859"
+      },
+      "src/graph_arena_verifier.cpp": {
+        "bytes": 9617,
+        "git_blob": "f55d22c3c12969d9e512ba9fe93c15d3b2671fcd",
+        "mode": "100644",
+        "sha256": "4afea27d3a112bd43e896e64cd7ada226136bdddffaa48f479aa2224cf39e096"
+      },
+      "src/provenance.cpp": {
+        "bytes": 9557,
+        "git_blob": "0f0d91fbceeb87d19bd189d2a3b96c01605ad2cf",
+        "mode": "100644",
+        "sha256": "616d05f96afa510522d011f51a6030430c4529a8df0c8736729d6223338a1f84"
+      },
+      "src/reference.cpp": {
+        "bytes": 25366,
+        "git_blob": "11eb671dcbdc8589a53491437406ce877e935473",
+        "mode": "100644",
+        "sha256": "f9cc2057fe5861fbfc133b9ed57cd77485e8d88a263bec8295d869c25f6030d1"
+      },
+      "src/shape.cpp": {
+        "bytes": 3221,
+        "git_blob": "7277c3bb63c9816a71b57c0bf75dd370f74e9b72",
+        "mode": "100644",
+        "sha256": "3e429ab69198301aa4adf3c2d92f8893a67e28f00b1a0f1fef507c9734a8e111"
+      },
+      "src/shape_inference.cpp": {
+        "bytes": 4944,
+        "git_blob": "4f98d2f0c6ac18d4388333244c94996f85de3ed3",
+        "mode": "100644",
+        "sha256": "096fcded57d5e7326ccddd197f83edc9e738255d671f6f88e5931243415f6793"
+      },
+      "src/structural_canonicalization.cpp": {
+        "bytes": 20713,
+        "git_blob": "219e50f3a1ada8ad045fcd69ee6cabc8fb4fc0db",
+        "mode": "100644",
+        "sha256": "e1b48771084c5b25272dabbc7b36a77f4cc0ecf8fe3d914b0031e7444f48c8a0"
+      },
+      "src/tensor_type.cpp": {
+        "bytes": 2626,
+        "git_blob": "91ab7268c27448e373f40dc10de2184af70e12c1",
+        "mode": "100644",
+        "sha256": "a713c2551805adeb01edf50f5cd0b13be90b7220b75133abe1d331d62f5d41ec"
+      }
+    },
+    "tree": "e2674cfd49259325cffda2d9e86dd9cdf3862bbd"
+  },
   "reproduce": [
     "make -j2 PROFILE=release visuals",
     "make PROFILE=release visuals-check"
   ],
-  "schema": "tensorkiln.readme-visual-evidence.v1",
+  "schema": "tensorkiln.readme-visual-evidence.v2",
   "scope": "verified deterministic examples; not benchmarks",
   "sources": {
     "execute_graph": {
       "binary": "execute_graph",
+      "binary_bytes": 669408,
+      "binary_sha256": "0c166538bdf1e1399bf01d763f0a01981c4db62074ed4a67c05c97788eb9f0d9",
       "stdout_sha256": "831194f4d7019e85ba32c7e2355dfc49b4caa3f4b1ae7b9db47b75bdae85a2e4"
+    },
+    "execute_softmax": {
+      "binary": "execute_softmax",
+      "binary_bytes": 670056,
+      "binary_sha256": "fb2da32126cfb362e432e0c501c14e480104ee2d3963633a94fa77eab286d9db",
+      "fixture": "crafted f32[5,4] policy slices",
+      "stdout_sha256": "a8fde11bd37ec79801fd9c7d8f370501b2d4197dbd5816ff6f461c7469ae5898"
     },
     "plan_arena": {
       "binary": "plan_arena",
+      "binary_bytes": 148360,
+      "binary_sha256": "1f5c9d925e20bb3061b5505a041bb273af137d5d4745371973fd00b1730b00d9",
       "stdout_sha256": "5cda0ab2cc42372c6991c2387aca6635212b35d7dbb2391d0af7895f2af1c0bb"
     }
   }

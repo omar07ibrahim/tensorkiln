@@ -501,6 +501,105 @@ class SourceProvenanceTests(unittest.TestCase):
             self.assertRegex(record["sha256"], r"^[0-9a-f]{64}$")
 
 
+class CommittedSoftmaxEvidenceTests(unittest.TestCase):
+    def test_softmax_bundle_is_complete_safe_and_manifest_bound(self) -> None:
+        evidence_dir = REPOSITORY_ROOT / "docs" / "visuals" / "generated"
+        manifest_path = evidence_dir / "manifest.json"
+
+        def reject_duplicate_keys(
+            pairs: list[tuple[str, object]],
+        ) -> dict[str, object]:
+            result: dict[str, object] = {}
+            for key, value in pairs:
+                if key in result:
+                    raise AssertionError(
+                        f"duplicate manifest key: {key}"
+                    )
+                result[key] = value
+            return result
+
+        manifest = json.loads(
+            manifest_path.read_text(encoding="utf-8"),
+            object_pairs_hook=reject_duplicate_keys,
+        )
+        self.assertEqual(
+            manifest["schema"], "tensorkiln.readme-visual-evidence.v2"
+        )
+        self.assertTrue(manifest["generator"]["committed"])
+        self.assertRegex(
+            manifest["generator"]["commit"], r"^[0-9a-f]{40,64}$"
+        )
+        self.assertRegex(
+            manifest["generator"]["tree"], r"^[0-9a-f]{40,64}$"
+        )
+        self.assertRegex(
+            manifest["generator"]["git_blob"], r"^[0-9a-f]{40,64}$"
+        )
+        self.assertEqual(
+            manifest["capture_contract"]["network_isolation"],
+            "not claimed",
+        )
+        self.assertEqual(
+            manifest["repository_source"]["selection"],
+            "latest commit touching the complete evidence build-input set",
+        )
+        self.assertIn(
+            "examples/execute_softmax.cpp",
+            manifest["repository_source"]["source_files"],
+        )
+
+        for filename, record in manifest["artifacts"].items():
+            payload = (evidence_dir / filename).read_bytes()
+            self.assertEqual(
+                hashlib.sha256(payload).hexdigest(), record["sha256"]
+            )
+
+        transcript_path = evidence_dir / "execute-softmax.txt"
+        transcript = transcript_path.read_text(encoding="ascii")
+        self.assertEqual(transcript, SOFTMAX_STDOUT)
+        self.assertEqual(
+            manifest["sources"]["execute_softmax"]["stdout_sha256"],
+            hashlib.sha256(transcript.encode()).hexdigest(),
+        )
+
+        svg_path = evidence_dir / "execute-softmax.svg"
+        svg = svg_path.read_text(encoding="utf-8")
+        visuals.reject_unsafe_text("committed Softmax SVG", svg)
+        self.assertNotIn("<script", svg.lower())
+        self.assertNotIn("<image", svg.lower())
+        self.assertNotIn(" href=", svg.lower())
+        root = ElementTree.fromstring(svg)
+        width = int(root.attrib["width"])
+        height = int(root.attrib["height"])
+        self.assertEqual(root.attrib["viewBox"], f"0 0 {width} {height}")
+
+        namespace = {"svg": "http://www.w3.org/2000/svg"}
+        terminal_group = root.find("svg:g", namespace)
+        self.assertIsNotNone(terminal_group)
+        terminal_lines = [
+            "".join(node.itertext())
+            for node in terminal_group.findall("svg:text", namespace)
+        ]
+        self.assertEqual(
+            terminal_lines,
+            [
+                "$ <release-build>/execute_softmax",
+                *SOFTMAX_STDOUT.splitlines(),
+            ],
+        )
+        for node, line in zip(
+            terminal_group.findall("svg:text", namespace),
+            terminal_lines,
+            strict=True,
+        ):
+            x = int(node.attrib["x"])
+            y = int(node.attrib["y"])
+            self.assertGreaterEqual(x, 0)
+            self.assertLessEqual(x + len(line) * 8, width - 24)
+            self.assertGreaterEqual(y, 0)
+            self.assertLessEqual(y, height)
+
+
 class DocumentationAssetTests(unittest.TestCase):
     def test_architecture_is_self_contained_and_linked(self) -> None:
         architecture_path = (
@@ -548,6 +647,8 @@ class DocumentationAssetTests(unittest.TestCase):
             "docs/visuals/reproduce.svg",
             "docs/visuals/generated/arena-reuse.svg",
             "docs/visuals/generated/execute-graph.svg",
+            "docs/visuals/generated/execute-softmax.svg",
+            "docs/visuals/generated/execute-softmax.txt",
             "docs/visuals/generated/manifest.json",
         ):
             self.assertIn(relative_path, readme)
