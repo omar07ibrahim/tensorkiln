@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -40,6 +41,22 @@ tensorkiln.execution_plan v0 {
 }
 result = [4.5, 11, 0, 11]
 verified: audited execution matches the independent reference bit for bit
+"""
+
+SOFTMAX_STDOUT = """\
+=== verified Softmax execution ===
+scope: deterministic correctness example; not a benchmark
+plan {shape=f32[5,4], axis=1, kernel=softmax_last_axis_f32, scalar_steps=60, workspace_bytes=128, audited=true}
+slice finite_equal bits=[0x3e800000, 0x3e800000, 0x3e800000, 0x3e800000]
+slice nan_precedence bits=[0x7fc00000, 0x7fc00000, 0x7fc00000, 0x7fc00000]
+slice positive_infinity_split bits=[0x3f000000, 0x00000000, 0x3f000000, 0x00000000]
+slice all_negative_infinity bits=[0x7fc00000, 0x7fc00000, 0x7fc00000, 0x7fc00000]
+slice mixed_negative_infinity bits=[0x00000000, 0x3f000000, 0x3f000000, 0x00000000]
+agreement {executor_reference_bits=20/20, executor_fixture_bits=20/20}
+=== optimized axis boundary ===
+reference_axis0 {status=accepted, scalar_steps=80}
+optimized_axis0 {code=plan_operation_unsupported, message=plan backend does not support softmax axis 0 at #n1}
+verified: last-axis execution and reference agree; valid axis 0 remains reference-only
 """
 
 
@@ -240,7 +257,46 @@ class TranscriptTests(unittest.TestCase):
         self.assertIn("&lt;verified &amp; escaped&gt;", rendered)
         self.assertNotIn("<verified & escaped>", rendered)
 
-    def test_evidence_bundle_binds_transcripts_and_visuals(self) -> None:
+    def test_softmax_terminal_svg_preserves_the_complete_fixture_report(
+        self,
+    ) -> None:
+        first = visuals.render_execute_softmax_svg(SOFTMAX_STDOUT)
+        second = visuals.render_execute_softmax_svg(SOFTMAX_STDOUT)
+
+        self.assertEqual(first, second)
+        self.assertIn("$ &lt;release-build&gt;/execute_softmax", first)
+        self.assertIn("FIVE EXACT SLICES", first)
+        self.assertIn("executor_reference_bits=20/20", first)
+        self.assertIn("scalar_steps=60", first)
+        self.assertIn("scalar_steps=80", first)
+        self.assertIn("remains reference-only", first)
+        self.assertIn("NOT A BENCHMARK", first)
+        self.assertIn("fixture-scoped bits", first)
+        ElementTree.fromstring(first)
+
+    def test_softmax_capture_rejects_mutation_or_additional_output(self) -> None:
+        cases = (
+            SOFTMAX_STDOUT.replace("0x3e800000", "0x3e800001", 1),
+            SOFTMAX_STDOUT.replace(
+                "executor_fixture_bits=20/20",
+                "executor_fixture_bits=19/20",
+            ),
+            SOFTMAX_STDOUT.replace(
+                "scalar_steps=80", "scalar_steps=79"
+            ),
+            SOFTMAX_STDOUT
+            + "claim: arbitrary libm output is bit-identical\n",
+        )
+        for unsafe in cases:
+            with self.subTest(
+                unsafe_sha256=hashlib.sha256(unsafe.encode()).hexdigest()
+            ):
+                with self.assertRaises(visuals.VisualEvidenceError):
+                    visuals.render_execute_softmax_svg(unsafe)
+
+    def test_legacy_bundle_remains_available_during_v2_publication(
+        self,
+    ) -> None:
         def fake_example(
             _build_dir: Path,
             binary_name: str,
@@ -255,14 +311,121 @@ class TranscriptTests(unittest.TestCase):
         with mock.patch.object(
             visuals, "run_release_example", side_effect=fake_example
         ):
-            artifacts = visuals.render_visuals(Path("unused-release-dir"))
+            artifacts = visuals.render_legacy_visuals(
+                Path("unused-release-dir")
+            )
+
+        self.assertEqual(
+            set(artifacts),
+            {
+                "arena-plan.txt",
+                "arena-reuse.svg",
+                "execute-graph.svg",
+                "execute-graph.txt",
+                "manifest.json",
+            },
+        )
+        manifest = json.loads(artifacts["manifest.json"])
+        self.assertEqual(
+            manifest["schema"], "tensorkiln.readme-visual-evidence.v1"
+        )
+        self.assertEqual(
+            manifest["generator"], "tools/render_readme_visuals.py"
+        )
+
+    def test_evidence_bundle_binds_transcripts_and_visuals(self) -> None:
+        def fake_example(
+            _build_dir: Path,
+            binary_name: str,
+            _sentinels: tuple[str, ...],
+        ) -> str:
+            if binary_name == "plan_arena":
+                return PLAN_STDOUT
+            if binary_name == "execute_graph":
+                return EXECUTE_STDOUT
+            if binary_name == "execute_softmax":
+                return SOFTMAX_STDOUT
+            raise AssertionError(f"unexpected binary: {binary_name}")
+
+        source_provenance = {
+            "commit": "1" * 40,
+            "object_format": "sha1",
+            "selection": "test source selection",
+            "source_files": {
+                "examples/execute_softmax.cpp": {
+                    "bytes": 1,
+                    "git_blob": "2" * 40,
+                    "mode": "100644",
+                    "sha256": "3" * 64,
+                }
+            },
+            "tree": "4" * 40,
+        }
+        binary_provenance = {
+            "execute_graph": {"bytes": 101, "sha256": "5" * 64},
+            "execute_softmax": {"bytes": 102, "sha256": "6" * 64},
+            "plan_arena": {"bytes": 103, "sha256": "7" * 64},
+        }
+        generator_provenance = {
+            "bytes": 104,
+            "commit": "8" * 40,
+            "committed": True,
+            "git_blob": "9" * 40,
+            "path": "tools/render_readme_visuals.py",
+            "sha256": "a" * 64,
+            "tree": "b" * 40,
+        }
+        with mock.patch.object(
+            visuals, "run_release_example", side_effect=fake_example
+        ), mock.patch.object(
+            visuals,
+            "collect_source_provenance",
+            return_value=source_provenance,
+        ), mock.patch.object(
+            visuals,
+            "collect_binary_provenance",
+            return_value=binary_provenance,
+        ), mock.patch.object(
+            visuals,
+            "collect_generator_provenance",
+            return_value=generator_provenance,
+        ):
+            artifacts = visuals.render_visuals(
+                Path("unused-release-dir"), include_softmax=True
+            )
 
         self.assertEqual(artifacts["arena-plan.txt"], PLAN_STDOUT)
         self.assertEqual(artifacts["execute-graph.txt"], EXECUTE_STDOUT)
+        self.assertEqual(artifacts["execute-softmax.txt"], SOFTMAX_STDOUT)
         manifest = json.loads(artifacts["manifest.json"])
+        self.assertEqual(
+            manifest["schema"], "tensorkiln.readme-visual-evidence.v2"
+        )
+        self.assertEqual(
+            manifest["repository_source"], source_provenance
+        )
+        self.assertEqual(manifest["generator"], generator_provenance)
         self.assertEqual(
             manifest["sources"]["execute_graph"]["stdout_sha256"],
             hashlib.sha256(EXECUTE_STDOUT.encode()).hexdigest(),
+        )
+        self.assertEqual(
+            manifest["sources"]["execute_softmax"]["stdout_sha256"],
+            hashlib.sha256(SOFTMAX_STDOUT.encode()).hexdigest(),
+        )
+        self.assertEqual(
+            manifest["sources"]["execute_softmax"]["binary_sha256"],
+            "6" * 64,
+        )
+        self.assertEqual(
+            manifest["capture_contract"]["network_isolation"],
+            "not claimed",
+        )
+        self.assertTrue(
+            any(
+                "not arbitrary finite inputs or libm" in claim
+                for claim in manifest["claim_boundary"]
+            )
         )
         for filename, record in manifest["artifacts"].items():
             self.assertEqual(
@@ -270,6 +433,72 @@ class TranscriptTests(unittest.TestCase):
                 hashlib.sha256(artifacts[filename].encode()).hexdigest(),
             )
         self.assertNotIn("/home/", artifacts["manifest.json"])
+
+
+class SourceProvenanceTests(unittest.TestCase):
+    def test_dirty_pathspec_scope_fails_before_source_discovery(self) -> None:
+        with mock.patch.object(
+            visuals,
+            "_git_text",
+            return_value=str(REPOSITORY_ROOT),
+        ), mock.patch.object(
+            visuals,
+            "_run_git",
+            return_value=b" D include/tensorkiln/execution.hpp\0",
+        ):
+            with self.assertRaisesRegex(
+                visuals.VisualEvidenceError,
+                "build inputs differ",
+            ):
+                visuals.collect_source_provenance()
+
+    def test_tracked_path_decoder_rejects_duplicates_and_escape(self) -> None:
+        for payload in (
+            b"src/a.cpp\0src/a.cpp\0",
+            b"src/../outside.cpp\0",
+            b"/absolute.cpp\0",
+            b"src/line\nbreak.cpp\0",
+        ):
+            with self.subTest(payload=payload):
+                with self.assertRaises(visuals.VisualEvidenceError):
+                    visuals._decode_nul_paths(payload, "test paths")
+
+    def test_tree_record_rejects_symlinks_and_submodules(self) -> None:
+        object_pattern = re.compile(r"^[0-9a-f]{40}$")
+        for mode, object_type in (
+            ("120000", "blob"),
+            ("160000", "commit"),
+        ):
+            record = (
+                f"{mode} {object_type} {'c' * 40}\tsrc/input.cpp\0"
+            ).encode()
+            with self.subTest(mode=mode), mock.patch.object(
+                visuals, "_run_git", return_value=record
+            ):
+                with self.assertRaisesRegex(
+                    visuals.VisualEvidenceError,
+                    "non-symlink 100644 blob",
+                ):
+                    visuals._tree_blob_record(
+                        "d" * 40, "src/input.cpp", object_pattern
+                    )
+
+    def test_current_evidence_build_inputs_are_commit_bound(self) -> None:
+        provenance = visuals.collect_source_provenance()
+        source_files = provenance["source_files"]
+
+        self.assertRegex(provenance["commit"], r"^[0-9a-f]{40,64}$")
+        self.assertRegex(provenance["tree"], r"^[0-9a-f]{40,64}$")
+        self.assertIn("Makefile", source_files)
+        self.assertIn("examples/execute_softmax.cpp", source_files)
+        self.assertIn(
+            "include/tensorkiln/execution.hpp", source_files
+        )
+        self.assertIn("src/execution_kernels.cpp", source_files)
+        for record in source_files.values():
+            self.assertEqual(record["mode"], "100644")
+            self.assertRegex(record["git_blob"], r"^[0-9a-f]{40,64}$")
+            self.assertRegex(record["sha256"], r"^[0-9a-f]{64}$")
 
 
 class DocumentationAssetTests(unittest.TestCase):
