@@ -23,15 +23,25 @@ definitions. Computational methods derive their result type:
 ValueId x = unwrap(builder.input("x", f32({2, 3})));
 ValueId bias = unwrap(builder.constant("bias", f32({3}), bias_data));
 ValueId sum = unwrap(builder.add(x, bias));
-ValueId result = unwrap(builder.relu(sum));
+ValueId probabilities = unwrap(builder.softmax(sum, -1));
+ValueId result = unwrap(builder.relu(probabilities));
 unwrap(builder.output("result", result));
 VerifiedGraph graph = unwrap(std::move(builder).finish());
 ```
 
 The builder currently supports `Input`, `Constant`, `Add`, `MatMul`, and
-`Relu`. `Add` uses trailing multidirectional broadcasting. `MatMul` accepts
-rank 2 through 4, broadcasts batch prefixes, checks `K`, and returns
-`broadcast(batch(A), batch(B)) + [M,N]`.
+`Relu`, plus axis-aware `Softmax` for rank 1 through 4. `Add` uses trailing
+multidirectional broadcasting. `MatMul` accepts rank 2 through 4, broadcasts
+batch prefixes, checks `K`, and returns
+`broadcast(batch(A), batch(B)) + [M,N]`. `Softmax` preserves its input type.
+Its axis accepts the inclusive range `[-rank, rank - 1]`; a negative axis is
+normalized by adding the input rank, and only the canonical non-negative axis
+is stored in the immutable graph. Rank-zero tensors have no valid axis.
+
+The reference interpreter evaluates every valid `Softmax` axis. The current
+optimized execution-plan backend remains narrower: it has no Softmax kernel
+and returns `plan_operation_unsupported`. That backend limitation does not
+make the graph invalid.
 
 These rules follow the relevant parts of the official
 [ONNX broadcasting](https://onnx.ai/onnx/repo-docs/Broadcasting.html) and
@@ -125,8 +135,9 @@ tensorkiln.graph v0 {
   #n0 %0 = input @x : f32[2,3]
   #n1 %1 = constant @bias {elements=3, fnv1a64=0x99e02dab84d74dd8} : f32[3]
   #n2 %2 = add %0, %1 : f32[2,3]
-  #n3 %3 = relu %2 : f32[2,3]
-  #o0 output @result = %3
+  #n3 %3 = softmax %2 {axis=1} : f32[2,3]
+  #n4 %4 = relu %3 : f32[2,3]
+  #o0 output @result = %4
 }
 ```
 

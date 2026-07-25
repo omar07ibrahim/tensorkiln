@@ -27,6 +27,9 @@ class ForwardMaterializesArenaBuffer final {
     return true;
   }
   [[nodiscard]] bool operator()(const ReluOp&) const noexcept { return true; }
+  [[nodiscard]] bool operator()(const SoftmaxOp&) const noexcept {
+    return true;
+  }
 };
 
 [[nodiscard]] bool forward_materializes_arena_buffer(

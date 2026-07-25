@@ -64,6 +64,10 @@ class ForwardKernelSelector final {
                      DenseKernelKind::relu_contiguous_f32)
                : std::nullopt;
   }
+  [[nodiscard]] std::optional<DenseKernelKind> operator()(
+      const SoftmaxOp&) const noexcept {
+    return std::nullopt;
+  }
 
  private:
   const VerifiedGraph& graph_;

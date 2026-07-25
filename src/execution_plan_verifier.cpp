@@ -81,6 +81,10 @@ class ReverseKernelClassifier final {
     }
     return DenseKernelKind::relu_contiguous_f32;
   }
+  [[nodiscard]] std::optional<DenseKernelKind> operator()(
+      const SoftmaxOp&) const noexcept {
+    return std::nullopt;
+  }
 
  private:
   const VerifiedGraph& graph_;

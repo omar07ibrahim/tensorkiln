@@ -686,4 +686,31 @@ TK_TEST("Graph arena results own mappings and reject foreign handles") {
   TK_REQUIRE_EQ(require_value_at(moved, 2U), detached.computed);
 }
 
+TK_TEST("Graph arena lowering materializes Softmax results across axes") {
+  GraphBuilder builder;
+  const ValueId input = unwrap(builder.input("x", f32({2, 3})));
+  const ValueId first = unwrap(builder.softmax(input, 0));
+  const ValueId second = unwrap(builder.softmax(first, -1));
+  static_cast<void>(unwrap(builder.output("result", second)));
+  const VerifiedGraph graph = unwrap(std::move(builder).finish());
+
+  const GraphArenaLoweringResult lowered =
+      unwrap(GraphArenaLowering::run(graph));
+  TK_REQUIRE_EQ(lowered.source_node_count(), 3U);
+  TK_REQUIRE_EQ(lowered.execution_step_count(), 2U);
+  TK_REQUIRE_EQ(lowered.requests().size(), 2U);
+  TK_REQUIRE_EQ(
+      lowered.requests()[0],
+      (tensorkiln::ArenaBufferRequest{24U, 0U, 2U}));
+  TK_REQUIRE_EQ(
+      lowered.requests()[1],
+      (tensorkiln::ArenaBufferRequest{24U, 1U, 2U}));
+  TK_REQUIRE_EQ(require_buffer_ordinal(lowered, first), 0U);
+  TK_REQUIRE_EQ(require_buffer_ordinal(lowered, second), 1U);
+  TK_REQUIRE_EQ(lowered.arena_plan().stats().total_payload_bytes, 48U);
+  TK_REQUIRE_EQ(lowered.arena_plan().stats().total_reserved_bytes, 128U);
+  TK_REQUIRE_EQ(lowered.arena_plan().workspace_bytes(), 128U);
+  require_plan_parity(graph, lowered);
+}
+
 }  // namespace

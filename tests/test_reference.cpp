@@ -8,11 +8,13 @@
 #include <initializer_list>
 #include <limits>
 #include <span>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
 #include "oracle_fixture.hpp"
+#include "softmax_oracle_fixture.hpp"
 #include "tensorkiln/reference.hpp"
 
 namespace {
@@ -81,6 +83,53 @@ void require_bits_equal(const std::span<const float> actual,
   for (std::size_t index = 0U; index < actual.size(); ++index) {
     TK_REQUIRE_EQ(std::bit_cast<std::uint32_t>(actual[index]),
                   std::bit_cast<std::uint32_t>(expected[index]));
+  }
+}
+
+void require_close(const float actual, const double expected) {
+  constexpr double absolute_tolerance = 2.0e-6;
+  constexpr double relative_tolerance = 2.0e-5;
+  const double promoted_actual = static_cast<double>(actual);
+  TK_REQUIRE(std::isfinite(promoted_actual));
+  TK_REQUIRE(std::isfinite(expected));
+  TK_REQUIRE(std::abs(promoted_actual - expected) <=
+             absolute_tolerance +
+                 relative_tolerance * std::abs(expected));
+}
+
+void require_normalized_slices(const Tensor& tensor,
+                               const std::size_t axis) {
+  const std::span<const std::int64_t> extents =
+      tensor.type().shape().extents();
+  TK_REQUIRE(axis < extents.size());
+  std::size_t axis_stride = 1U;
+  for (std::size_t trailing = axis + 1U; trailing < extents.size();
+       ++trailing) {
+    TK_REQUIRE(extents[trailing] > 0);
+    axis_stride *= static_cast<std::size_t>(extents[trailing]);
+  }
+  const auto axis_extent =
+      static_cast<std::size_t>(extents[axis]);
+  const std::size_t axis_block = axis_extent * axis_stride;
+  TK_REQUIRE(axis_block > 0U);
+  TK_REQUIRE(tensor.data().size() % axis_block == 0U);
+  const std::size_t outer_count =
+      tensor.data().size() / axis_block;
+  for (std::size_t outer = 0U; outer < outer_count; ++outer) {
+    for (std::size_t inner = 0U; inner < axis_stride; ++inner) {
+      double sum = 0.0;
+      for (std::size_t coordinate = 0U; coordinate < axis_extent;
+           ++coordinate) {
+        const float value =
+            tensor.data()[outer * axis_block +
+                          coordinate * axis_stride + inner];
+        TK_REQUIRE(std::isfinite(value));
+        TK_REQUIRE(value >= 0.0F);
+        TK_REQUIRE(value <= 1.0F);
+        sum += static_cast<double>(value);
+      }
+      TK_REQUIRE(std::abs(sum - 1.0) <= 2.0e-6);
+    }
   }
 }
 
@@ -439,6 +488,126 @@ TK_TEST("Reference ReLU defines NaN infinity and signed-zero behavior") {
   TK_REQUIRE_EQ(std::bit_cast<std::uint32_t>(output[5]), 0x7f800000U);
   TK_REQUIRE(std::isnan(output[6]));
   TK_REQUIRE_EQ(std::bit_cast<std::uint32_t>(output[6]), 0x7fc12345U);
+}
+
+TK_TEST("Reference Softmax matches the independent non-last-axis fixture") {
+  using namespace tensorkiln::softmax_oracle_fixture;
+
+  GraphBuilder builder;
+  const ValueId input =
+      require_value(builder.input("x", make_type(kInputShape)));
+  const ValueId probabilities =
+      require_value(builder.softmax(input, kAxis));
+  require_output(builder.output("probabilities", probabilities));
+  const VerifiedGraph graph = require_graph(std::move(builder).finish());
+  const std::array<InputBinding, 1U> bindings{{
+      InputBinding{"x", kInput},
+  }};
+  const ReferenceLimits exact{96U, 48U};
+  const ReferenceResult result = require_result(
+      ReferenceInterpreter::run(graph, bindings, exact));
+  const Tensor& output =
+      require_output_tensor(result, "probabilities");
+
+  TK_REQUIRE_EQ(output.data().size(), kExpected.size());
+  for (std::size_t index = 0U; index < output.data().size(); ++index) {
+    require_close(output.data()[index], kExpected[index]);
+  }
+  require_normalized_slices(output, 1U);
+  TK_REQUIRE_EQ(result.materialized_bytes(), 96U);
+  TK_REQUIRE_EQ(result.scalar_steps(), 48U);
+
+  require_error(
+      ReferenceInterpreter::run(
+          graph, bindings, ReferenceLimits{96U, 47U}),
+      ErrorCode::reference_scalar_step_limit_exceeded);
+  require_error(
+      ReferenceInterpreter::run(
+          graph, bindings, ReferenceLimits{95U, 48U}),
+      ErrorCode::reference_materialization_limit_exceeded);
+}
+
+TK_TEST("Reference Softmax traverses every rank-three axis canonically") {
+  GraphBuilder builder;
+  const ValueId input =
+      require_value(builder.input("x", make_type({2, 2, 3})));
+  const std::array<std::int64_t, 6U> axes{{-3, -2, -1, 0, 1, 2}};
+  std::array<ValueId, 6U> probabilities{{
+      require_value(builder.softmax(input, axes[0])),
+      require_value(builder.softmax(input, axes[1])),
+      require_value(builder.softmax(input, axes[2])),
+      require_value(builder.softmax(input, axes[3])),
+      require_value(builder.softmax(input, axes[4])),
+      require_value(builder.softmax(input, axes[5])),
+  }};
+  for (std::size_t index = 0U; index < probabilities.size(); ++index) {
+    require_output(builder.output(
+        "axis_" + std::to_string(index), probabilities[index]));
+  }
+  const VerifiedGraph graph = require_graph(std::move(builder).finish());
+  const std::array<float, 12U> data{{
+      0.0F, 1.0F, 2.0F, 3.0F, 4.0F, 5.0F,
+      1000.0F, 1001.0F, 1002.0F, 1003.0F, 1004.0F, 1005.0F,
+  }};
+  const std::array<InputBinding, 1U> bindings{{InputBinding{"x", data}}};
+  const ReferenceResult result =
+      require_result(ReferenceInterpreter::run(graph, bindings));
+
+  for (std::size_t index = 0U; index < axes.size(); ++index) {
+    const Tensor& output = require_output_tensor(
+        result, "axis_" + std::to_string(index));
+    const std::size_t canonical_axis = index % 3U;
+    require_normalized_slices(output, canonical_axis);
+  }
+  for (std::size_t axis = 0U; axis < 3U; ++axis) {
+    const Tensor& negative = require_output_tensor(
+        result, "axis_" + std::to_string(axis));
+    const Tensor& positive = require_output_tensor(
+        result, "axis_" + std::to_string(axis + 3U));
+    require_bits_equal(negative.data(), positive.data());
+  }
+}
+
+TK_TEST("Reference Softmax applies deterministic non-finite precedence") {
+  GraphBuilder builder;
+  const ValueId input =
+      require_value(builder.input("x", make_type({4, 4})));
+  const ValueId probabilities =
+      require_value(builder.softmax(input));
+  require_output(builder.output("probabilities", probabilities));
+  const VerifiedGraph graph = require_graph(std::move(builder).finish());
+  const float payload_nan = std::bit_cast<float>(UINT32_C(0x7fc12345));
+  const float infinity = std::numeric_limits<float>::infinity();
+  const std::array<float, 16U> data{{
+      payload_nan, infinity, 0.0F, -infinity,
+      infinity, 3.0F, infinity, -infinity,
+      -infinity, -infinity, -infinity, -infinity,
+      -infinity, 0.0F, 0.0F, -infinity,
+  }};
+  const std::array<InputBinding, 1U> bindings{{InputBinding{"x", data}}};
+  const ReferenceResult result =
+      require_result(ReferenceInterpreter::run(graph, bindings));
+  const std::span<const float> output =
+      require_output_tensor(result, "probabilities").data();
+
+  for (std::size_t index = 0U; index < 4U; ++index) {
+    TK_REQUIRE_EQ(std::bit_cast<std::uint32_t>(output[index]),
+                  UINT32_C(0x7fc00000));
+  }
+  const std::array<float, 4U> positive_infinity_expected{{
+      0.5F, 0.0F, 0.5F, 0.0F,
+  }};
+  require_bits_equal(output.subspan(4U, 4U),
+                     positive_infinity_expected);
+  for (std::size_t index = 8U; index < 12U; ++index) {
+    TK_REQUIRE_EQ(std::bit_cast<std::uint32_t>(output[index]),
+                  UINT32_C(0x7fc00000));
+  }
+  const std::array<float, 4U> mixed_negative_infinity_expected{{
+      0.0F, 0.5F, 0.5F, 0.0F,
+  }};
+  require_bits_equal(output.subspan(12U, 4U),
+                     mixed_negative_infinity_expected);
 }
 
 TK_TEST("Reference limits accept exact payload and scalar-step boundaries") {

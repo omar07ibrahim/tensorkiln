@@ -18,6 +18,7 @@ class PlanOperationClass final {
     input,
     constant,
     compute,
+    unsupported,
   };
 
   [[nodiscard]] Kind operator()(const InputOp&) const noexcept {
@@ -34,6 +35,9 @@ class PlanOperationClass final {
   }
   [[nodiscard]] Kind operator()(const ReluOp&) const noexcept {
     return Kind::compute;
+  }
+  [[nodiscard]] Kind operator()(const SoftmaxOp&) const noexcept {
+    return Kind::unsupported;
   }
 };
 
@@ -175,6 +179,16 @@ Result<ExecutionPlanSourceAnalysis> analyze_execution_plan_source(
       case PlanOperationClass::Kind::compute:
         ++analysis.step_count;
         break;
+      case PlanOperationClass::Kind::unsupported: {
+        const auto& softmax =
+            std::get<SoftmaxOp>(node.operation());
+        return Result<ExecutionPlanSourceAnalysis>::failure(
+            execution_plan_error(
+                ErrorCode::plan_operation_unsupported,
+                "plan backend does not support softmax axis " +
+                    std::to_string(softmax.axis) + " at " +
+                    node_label(node.id())));
+      }
     }
   }
 

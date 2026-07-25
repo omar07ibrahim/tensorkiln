@@ -116,6 +116,7 @@ sanitize:
 
 oracle:
 	python3 -I tools/oracle.py --check tests/oracle_fixture.hpp
+	python3 -I tools/softmax_oracle.py --check tests/softmax_oracle_fixture.hpp
 
 example: run-examples
 

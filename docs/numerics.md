@@ -45,6 +45,23 @@ The currently executable operation-by-operation behavior, floating-point
 environment checks, special-value rules, and exact reference work accounting
 are specified in [the reference interpreter contract](reference.md).
 
+The reference Softmax path accepts every graph-valid axis and uses three
+ordered passes per slice. It first applies the exact non-finite precedence from
+the reference contract. An ordinary slice subtracts its finite maximum,
+evaluates `std::exp` in binary64, rounds each exponential to binary32, sums
+those rounded values in fixed axis order using binary64, and rounds each
+normalized quotient to binary32. The denominator is therefore derived from the
+same rounded numerators that are normalized.
+
+`std::exp` is not required to be bit-identical across operating-system math
+libraries. Softmax comparisons use the tolerance above and a slice-sum check;
+they never inherit the raw-bit claim made for the current five optimized
+kernels. The separate fixture uses 80-digit Python `Decimal` exponentials
+rather than extending the existing raw-bit Python corpus. On excess-precision
+targets, each denominator addition is explicitly rounded to binary64. Sticky
+floating-point exception flags remain observable caller state, as they are for
+the existing reference arithmetic.
+
 ## Arena executor rule
 
 The verified dense executor is independently implemented but intentionally
@@ -71,9 +88,10 @@ the environment, and any failed check publishes no result. Builds use
 
 The seeded arena corpus compares complete output bit patterns with the
 independent reference interpreter across all five current kernel variants.
-This evidence is exact for the current fixed operation order; it is not a
-license for future fusion, reassociation, or contraction to inherit the same
-claim without a new policy and tests. See [execution.md](execution.md).
+Reference-only Softmax does not change that corpus or claim. This evidence is
+exact for the current fixed operation order; it is not a license for future
+fusion, reassociation, contraction, or transcendental kernels to inherit the
+same claim without a new policy and tests. See [execution.md](execution.md).
 
 ## Structural pass rule
 

@@ -23,6 +23,7 @@ using tensorkiln::NodeId;
 using tensorkiln::OutputId;
 using tensorkiln::Shape;
 using tensorkiln::ShapeLimits;
+using tensorkiln::SoftmaxOp;
 using tensorkiln::TensorLimits;
 using tensorkiln::TensorType;
 using tensorkiln::ValueId;
@@ -271,6 +272,84 @@ TK_TEST("Matmul infers a broadcast batch type") {
   TK_REQUIRE_EQ(require_type(graph, product).to_string(), "f32[2,4,3,7]");
 }
 
+TK_TEST("Softmax canonicalizes valid axes across rank boundaries") {
+  GraphBuilder builder;
+  const ValueId vector =
+      require_value(builder.input("vector", make_type({5})));
+  const ValueId matrix =
+      require_value(builder.input("matrix", make_type({2, 3})));
+  const ValueId tensor =
+      require_value(builder.input("tensor", make_type({2, 3, 4, 5})));
+  const ValueId vector_default =
+      require_value(builder.softmax(vector));
+  const ValueId matrix_negative =
+      require_value(builder.softmax(matrix, -1));
+  const ValueId matrix_positive =
+      require_value(builder.softmax(matrix, 1));
+  const ValueId tensor_first =
+      require_value(builder.softmax(tensor, -4));
+  require_output(builder.output("vector", vector_default));
+  require_output(builder.output("matrix_negative", matrix_negative));
+  require_output(builder.output("matrix_positive", matrix_positive));
+  require_output(builder.output("tensor_first", tensor_first));
+  const VerifiedGraph graph = require_graph(std::move(builder).finish());
+
+  const auto require_axis = [&](const ValueId value,
+                                const std::uint32_t expected) {
+    const Node& node = require_node(
+        graph, graph.nodes()[value.ordinal()].id(), 1U);
+    const auto* operation = std::get_if<SoftmaxOp>(&node.operation());
+    TK_REQUIRE(operation != nullptr);
+    TK_REQUIRE_EQ(operation->axis, expected);
+    TK_REQUIRE_EQ(node.inputs()[0].ordinal() < value.ordinal(), true);
+  };
+  require_axis(vector_default, 0U);
+  require_axis(matrix_negative, 1U);
+  require_axis(matrix_positive, 1U);
+  require_axis(tensor_first, 0U);
+  TK_REQUIRE_EQ(require_type(graph, vector),
+                require_type(graph, vector_default));
+  TK_REQUIRE_EQ(require_type(graph, matrix),
+                require_type(graph, matrix_negative));
+  TK_REQUIRE_EQ(require_type(graph, tensor),
+                require_type(graph, tensor_first));
+  TK_REQUIRE(graph.dump().find(
+                 "softmax %1 {axis=1} : f32[2,3]") !=
+             std::string::npos);
+}
+
+TK_TEST("Softmax axis failures are typed transactional and owner-safe") {
+  GraphBuilder foreign_builder;
+  const ValueId foreign =
+      require_value(foreign_builder.input("foreign", make_type({2, 3})));
+
+  GraphBuilder builder;
+  const ValueId scalar =
+      require_value(builder.input("scalar", make_type({})));
+  const ValueId matrix =
+      require_value(builder.input("matrix", make_type({2, 3})));
+  require_error(builder.softmax(foreign, 99), ErrorCode::value_not_found);
+  TK_REQUIRE_EQ(
+      require_error(builder.softmax(scalar),
+                    ErrorCode::softmax_rank_unsupported)
+          .message,
+      "softmax requires rank 1 through 4; input rank is 0");
+  TK_REQUIRE_EQ(
+      require_error(builder.softmax(matrix, -3),
+                    ErrorCode::softmax_axis_out_of_range)
+          .message,
+      "softmax axis -3 is outside valid range [-2,1] for rank 2");
+  TK_REQUIRE_EQ(
+      require_error(builder.softmax(matrix, 2),
+                    ErrorCode::softmax_axis_out_of_range)
+          .message,
+      "softmax axis 2 is outside valid range [-2,1] for rank 2");
+  TK_REQUIRE_EQ(builder.node_count(), 2U);
+
+  const ValueId valid = require_value(builder.softmax(matrix, -2));
+  TK_REQUIRE_EQ(valid.ordinal(), 2U);
+}
+
 TK_TEST("Output labels are unique but may alias definitions") {
   GraphBuilder builder;
   const ValueId input = require_value(builder.input("x", make_type({2})));
@@ -410,6 +489,7 @@ TK_TEST("Finalization requires an output and consumes on success") {
   const auto graph = std::move(builder).finish();
   TK_REQUIRE(graph.has_value());
   require_error(builder.relu(input), ErrorCode::builder_finished);
+  require_error(builder.softmax(input), ErrorCode::builder_finished);
   require_error(std::move(builder).finish(), ErrorCode::builder_finished);
 }
 

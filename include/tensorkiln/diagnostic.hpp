@@ -61,6 +61,9 @@ enum class ErrorCode : std::uint8_t {
   plan_step_source_mismatch,
   plan_kernel_invalid,
   plan_kernel_incompatible,
+  softmax_rank_unsupported,
+  softmax_axis_out_of_range,
+  plan_operation_unsupported,
 };
 
 struct Diagnostic final {

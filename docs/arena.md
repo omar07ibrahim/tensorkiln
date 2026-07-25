@@ -89,9 +89,10 @@ VerifiedGraph
 
 The graph projection applies these exact rules:
 
-1. Visit definitions in source-node order. Each `Add`, `MatMul`, and `Relu`
-   result receives one dense execution step and one dense buffer ordinal.
-   `Input` and `Constant` values remain external and consume neither domain.
+1. Visit definitions in source-node order. Each `Add`, `MatMul`, `Relu`, and
+   `Softmax` result receives one dense execution step and one dense buffer
+   ordinal. `Input` and `Constant` values remain external and consume neither
+   domain. The Softmax axis does not change its dense payload or lifetime.
 2. The request payload is the verified output type's exact byte count. All dead
    compute remains present unless the caller ran DCE first.
 3. Let `C` be the compute-step count and let a buffer be produced at step `p`.
@@ -145,7 +146,7 @@ Workspace accounting in the explicit layer is semantic-agnostic and includes
 every supplied request. It excludes only resources omitted from the request
 list, along with an aligned allocator's base over-allocation and metadata. The
 current graph projection omits external inputs and immutable constants and
-includes every `Add`, `MatMul`, and `Relu` result. Prepacked weights,
+includes every `Add`, `MatMul`, `Relu`, and `Softmax` result. Prepacked weights,
 metadata-only views, aliases, and kernel scratch do not yet exist in that
 projection.
 

@@ -12,6 +12,12 @@ in progress.
 
 ### Added
 
+- axis-aware `Softmax` graph and independent reference semantics for every
+  valid rank 1-4 axis, including canonical negative axes, subtract-maximum
+  evaluation, explicit NaN/infinity behavior, exact work accounting, rewrite
+  support, and graph-arena storage lowering;
+- a typed optimized-plan rejection for reference-only operations, with
+  `Softmax` remaining outside the five-kernel allocation-free runtime boundary;
 - a move-only dense `ExecutionPlan`, produced from minimal kernel/placement
   decisions only after independent reconstruction of layouts, operands,
   storage, lifetimes, outputs, limits, and work accounting;

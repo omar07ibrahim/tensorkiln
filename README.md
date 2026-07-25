@@ -18,6 +18,8 @@ reference interpreter.
 > independent Python and C++ reference paths, explicit dead-code elimination
 > and structural canonicalization, reverse-verified arena planning, five dense
 > row-major kernels, and a synchronous allocation-free session run path.
+> Axis-aware `Softmax` is available in the graph, rewrite, reference, and
+> storage-planning layers but does not yet have an optimized kernel.
 > Fusion, views and in-place aliases, scratch, prepacking, broader operators,
 > SIMD, threading, cache-aware kernels, and benchmarks remain outside the
 > implemented boundary. The non-prerelease v0.1.0 contract below is the target;
@@ -89,21 +91,25 @@ The current vertical slice is small but runnable and inspectable:
 - checked scalar and rank 1-4 tensor types with explicit element/byte ceilings;
 - trailing multidirectional broadcasting and rank 2-4 batched `MatMul`
   inference;
-- a transactional `GraphBuilder` for `Input`, `Constant`, `Add`, `MatMul`, and
-  `Relu`;
+- a transactional `GraphBuilder` for `Input`, `Constant`, `Add`, `MatMul`,
+  `Relu`, and axis-aware `Softmax`, including canonical negative axes;
 - owner-tagged handles that reject accidental cross-graph use;
 - immutable verified graphs with deterministic, golden-tested IR dumps;
 - graph-wide node, output, name, tensor, and cumulative constant-data limits;
 - an isolated contiguous reference interpreter with owner-safe result lookup,
   exact payload/work ceilings, and fail-closed floating-point environment
   checks;
+- subtract-maximum reference `Softmax` on every valid rank 1-4 axis, with
+  fixed traversal, explicit NaN/infinity semantics, and a separate
+  high-precision Python `Decimal` tolerance fixture;
 - bit-exact Python-stdlib fixtures consumed at real `MatMul -> Add -> Relu`
   boundaries;
 - deterministic dead-code elimination that preserves the complete input
   contract, output declaration order and aliases, exact source construction
   limits, and bitwise constant payloads;
 - deterministic structural canonicalization with exact CSE for `Add`, `MatMul`,
-  and `Relu`, plus the semantics-preserving `Relu(Relu(x)) -> Relu(x)` rule;
+  `Relu`, and canonical-axis `Softmax`, plus the semantics-preserving
+  `Relu(Relu(x)) -> Relu(x)` rule;
 - an output-alias guard that prevents equivalent source outputs from silently
   collapsing into one result value;
 - owner-safe, composable provenance with stable pass statistics and
@@ -114,10 +120,10 @@ The current vertical slice is small but runnable and inspectable:
 - an independent placement verifier with checked arithmetic, exact workspace
   accounting, canonical dumps, stable diagnostics, and seeded pairwise-oracle
   coverage;
-- a graph-to-arena storage projection that gives every `Add`, `MatMul`, and
-  `Relu` result a dense sequential step and buffer ordinal, leaves inputs and
-  constants external, retains dead compute, and keeps arena-backed outputs live
-  through the final compute step;
+- a graph-to-arena storage projection that gives every `Add`, `MatMul`, `Relu`,
+  and `Softmax` result a dense sequential step and buffer ordinal, leaves
+  inputs and constants external, retains dead compute, and keeps arena-backed
+  outputs live through the final compute step;
 - mandatory reverse reconstruction of graph mappings, lifetimes, limits,
   statistics, and allocations before a planned graph projection is returned,
   with seeded DAG, heterogeneous `MatMul`, ownership, fault-injection, and exact
@@ -127,6 +133,8 @@ The current vertical slice is small but runnable and inspectable:
   deterministic dump, exact limits, and checked work accounting;
 - independently verified selection of `Add` contiguous/broadcast, rank-2 and
   batched `MatMul`, and contiguous `Relu` kernels;
+- a typed `plan_operation_unsupported` boundary for graph operations, including
+  the current reference-only `Softmax`, that have no optimized kernel;
 - an `ExecutionSession` with a 64-byte-aligned workspace, outer guards for
   every non-empty workspace, explicit input binding, stale-safe result lookup,
   and an optional per-kernel shadow audit that rejects writes outside the exact
@@ -183,7 +191,7 @@ pipeline, show verified interval reuse, and execute an audited
 `MatMul -> Add -> Relu` plan while requiring raw-bit agreement with the
 independent interpreter. The sanitizer target runs the same suite under
 AddressSanitizer and UndefinedBehaviorSanitizer; the oracle target proves that
-the committed golden fixture still matches its independent generator. See
+both committed numerical fixtures still match their independent generators. See
 [the graph IR contract](docs/ir.md) for construction invariants and
 [the reference interpreter contract](docs/reference.md) for execution,
 resource, lifetime, and numerical semantics. See

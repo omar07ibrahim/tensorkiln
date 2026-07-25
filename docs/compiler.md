@@ -64,9 +64,11 @@ result reflects its fresh owner domain and any removed definitions; lowering
 the canonicalized result additionally reflects exact CSE and redundant-ReLU
 removal. `GraphArenaLowering` does not choose that ordering, mutate the selected
 graph, or carry compiler provenance into its result. It assigns dense steps
-only to `Add`, `MatMul`, and `Relu`; inputs and constants remain external. A
-successful result proves a reverse-verified sequential storage placement, not
-numerical equivalence or execution.
+to `Add`, `MatMul`, `Relu`, and `Softmax`; inputs and constants remain
+external. A successful result proves a reverse-verified sequential storage
+placement, not numerical equivalence or execution. Storage lowering accepts
+every valid Softmax axis because its dense output size and lifetime do not
+depend on optimized-kernel availability.
 
 ## Executable dense plan compilation
 
@@ -90,7 +92,9 @@ preflights the selected graph, obtains its reverse-verified arena projection,
 and proposes only two kinds of decisions: one source-node/kernel pair per
 compute step and one byte offset per arena buffer. Kernel selection currently
 distinguishes equal-shape and broadcast `Add`, rank-2 and batched `MatMul`, and
-contiguous `Relu`.
+contiguous `Relu`. `Softmax` has reference semantics and storage lowering but
+no optimized kernel in this slice, so plan compilation returns
+`plan_operation_unsupported` before accepting candidate steps or placements.
 
 `ExecutionPlanVerifier` is the only construction path for the returned plan.
 It independently reconstructs dense layouts, operand edges, input/constant/
@@ -147,7 +151,8 @@ payload bits.
 
 The only v0 rewrite rules are:
 
-1. exact CSE for `Add`, `MatMul`, and `Relu` when the explicit operation kind,
+1. exact CSE for `Add`, `MatMul`, `Relu`, and `Softmax` when the explicit
+   operation kind, operation payload (including canonical Softmax axis),
    ordered canonical operand IDs, and complete output `TensorType` match;
 2. `Relu(Relu(x)) -> Relu(x)`.
 

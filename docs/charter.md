@@ -78,8 +78,8 @@ graph. Compilation then performs, in order:
 This sequence remains the full v0.1 target. Dead-code elimination and exact
 structural canonicalization are the graph-to-graph stages available today and
 remain explicit rather than automatic. A storage-only slice of stage 7 derives
-one request for every current `Add`, `MatMul`, and `Relu` result and requires
-independent reverse agreement before returning it.
+one request for every current `Add`, `MatMul`, `Relu`, and `Softmax` result and
+requires independent reverse agreement before returning it.
 
 A narrow executable slice of stages 6 through 8 is also implemented for the
 current dense row-major operators. `ExecutionPlanCompiler` selects contiguous
@@ -101,11 +101,11 @@ order and aliases, and stable relative order of surviving definitions. Its
 exact shipped guarantees are specified in
 [the compiler-pass contract](compiler.md).
 
-Structural canonicalization performs only exact `Add`, `MatMul`, and `Relu`
-common-subexpression elimination plus redundant-ReLU removal. It preserves
-output alias classes and does not apply algebraic identities or floating-point
-reassociation. Its exact shipped guarantees are specified in the same
-compiler-pass contract.
+Structural canonicalization performs only exact `Add`, `MatMul`, `Relu`, and
+canonical-axis `Softmax` common-subexpression elimination plus redundant-ReLU
+removal. It preserves output alias classes and does not apply algebraic
+identities or floating-point reassociation. Its exact shipped guarantees are
+specified in the same compiler-pass contract.
 
 The graph IR describes logical tensors. The full target plan IR will own
 strides, alias decisions, kernel variants, arena offsets, scratch requirements,

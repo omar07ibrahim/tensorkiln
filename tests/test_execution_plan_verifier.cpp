@@ -6,6 +6,7 @@
 #include <initializer_list>
 #include <limits>
 #include <span>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -312,8 +313,44 @@ TK_TEST("Execution plan verifier accepts an external-only empty candidate") {
   TK_REQUIRE_EQ(plan.stats().workspace_bytes, 0U);
 }
 
+TK_TEST("Execution plans reject reference-only Softmax with a typed error") {
+  const std::array<std::int64_t, 2U> axes{{0, -1}};
+  for (const std::int64_t axis : axes) {
+    GraphBuilder builder;
+    const ValueId input = unwrap(builder.input("x", f32({2, 3})));
+    const ValueId probabilities =
+        unwrap(builder.softmax(input, axis));
+    static_cast<void>(
+        unwrap(builder.output("probabilities", probabilities)));
+    const VerifiedGraph graph = unwrap(std::move(builder).finish());
+    const std::uint32_t canonical_axis = axis < 0 ? 1U : 0U;
+    const std::string expected_message =
+        "plan backend does not support softmax axis " +
+        std::to_string(canonical_axis) + " at #n1";
+
+    const auto compiled = ExecutionPlanCompiler::run(graph);
+    TK_REQUIRE_EQ(
+        require_error(compiled, ErrorCode::plan_operation_unsupported)
+            .message,
+        expected_message);
+
+    const std::array<ExecutionStepSpec, 0U> specs{};
+    const std::array<ArenaPlacement, 0U> placements{};
+    const auto verified = ExecutionPlanVerifier::verify(
+        graph,
+        ExecutionPlanCandidate{
+            std::span<const ExecutionStepSpec>{specs},
+            std::span<const ArenaPlacement>{placements},
+        });
+    TK_REQUIRE_EQ(
+        require_error(verified, ErrorCode::plan_operation_unsupported)
+            .message,
+        expected_message);
+  }
+}
+
 TK_TEST("Execution plan diagnostics expose stable typed names") {
-  const std::array<std::pair<ErrorCode, std::string_view>, 10U> cases{{
+  const std::array<std::pair<ErrorCode, std::string_view>, 11U> cases{{
       {ErrorCode::plan_value_limit_exceeded,
        "plan_value_limit_exceeded"},
       {ErrorCode::plan_step_limit_exceeded,
@@ -332,6 +369,8 @@ TK_TEST("Execution plan diagnostics expose stable typed names") {
       {ErrorCode::plan_kernel_invalid, "plan_kernel_invalid"},
       {ErrorCode::plan_kernel_incompatible,
        "plan_kernel_incompatible"},
+      {ErrorCode::plan_operation_unsupported,
+       "plan_operation_unsupported"},
   }};
   for (const auto& [code, expected] : cases) {
     TK_REQUIRE_EQ(tensorkiln::error_code_name(code), expected);

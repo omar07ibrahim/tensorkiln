@@ -114,7 +114,7 @@
   <g>
     <rect x="896" y="492" width="412" height="66" rx="13" fill="url(#green)" stroke="#34d399" class="box"/>
     <text x="916" y="519" class="command">make oracle</text>
-    <text x="916" y="542" class="small">byte-check the independent Python fixture generator</text>
+    <text x="916" y="542" class="small">byte-check both independent Python fixture generators</text>
   </g>
 
   <text x="1360" y="606" text-anchor="end" fill="#64748b" font-family="DejaVu Sans, system-ui, sans-serif" font-size="11">Every command above is a current Makefile target.</text>

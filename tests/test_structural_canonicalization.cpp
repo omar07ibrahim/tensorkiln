@@ -26,6 +26,7 @@ using tensorkiln::ReferenceInterpreter;
 using tensorkiln::ReferenceResult;
 using tensorkiln::ReluOp;
 using tensorkiln::Shape;
+using tensorkiln::SoftmaxOp;
 using tensorkiln::StructuralCanonicalization;
 using tensorkiln::StructuralCanonicalizationResult;
 using tensorkiln::StructuralCanonicalizationStats;
@@ -346,6 +347,64 @@ TK_TEST("Structural canonicalization chooses the first output-compatible candida
   TK_REQUIRE_EQ(provenance[3].sources()[0].node(), source.nodes()[4].id());
   TK_REQUIRE_EQ(provenance[4].sources().size(), 1U);
   TK_REQUIRE_EQ(provenance[4].sources()[0].node(), source.nodes()[6].id());
+}
+
+TK_TEST("Structural canonicalization keys Softmax by canonical axis") {
+  GraphBuilder builder;
+  const ValueId input =
+      require_value(builder.input("x", make_type({2, 3})));
+  const ValueId first =
+      require_value(builder.softmax(input, 1));
+  const ValueId duplicate =
+      require_value(builder.softmax(input, -1));
+  const ValueId different =
+      require_value(builder.softmax(input, 0));
+  const ValueId pair =
+      require_value(builder.add(first, duplicate));
+  const ValueId result =
+      require_value(builder.add(pair, different));
+  require_output(builder.output("result", result));
+  const VerifiedGraph source = require_graph(std::move(builder).finish());
+  const StructuralCanonicalizationResult canonicalized =
+      require_canonicalized(StructuralCanonicalization::run(source));
+
+  TK_REQUIRE_EQ(
+      canonicalized.stats(),
+      (StructuralCanonicalizationStats{6U, 5U, 1U, 1U, 0U, 0U}));
+  const auto* first_operation = std::get_if<SoftmaxOp>(
+      &canonicalized.graph().nodes()[1].operation());
+  const auto* different_operation = std::get_if<SoftmaxOp>(
+      &canonicalized.graph().nodes()[2].operation());
+  TK_REQUIRE(first_operation != nullptr);
+  TK_REQUIRE(different_operation != nullptr);
+  TK_REQUIRE_EQ(first_operation->axis, 1U);
+  TK_REQUIRE_EQ(different_operation->axis, 0U);
+  TK_REQUIRE_EQ(
+      canonicalized.graph().nodes()[3].inputs()[0].ordinal(), 1U);
+  TK_REQUIRE_EQ(
+      canonicalized.graph().nodes()[3].inputs()[1].ordinal(), 1U);
+  const NodeProvenance* merged =
+      canonicalized.provenance().for_source(first);
+  TK_REQUIRE(merged != nullptr);
+  TK_REQUIRE(merged ==
+             canonicalized.provenance().for_source(duplicate));
+  TK_REQUIRE(merged !=
+             canonicalized.provenance().for_source(different));
+
+  const std::array<float, 6U> data{{
+      0.0F, 1.0F, 2.0F,
+      3.0F, 4.0F, 5.0F,
+  }};
+  const std::array<InputBinding, 1U> bindings{{
+      InputBinding{"x", data},
+  }};
+  const ReferenceResult source_result =
+      require_reference(ReferenceInterpreter::run(source, bindings));
+  const ReferenceResult canonical_result = require_reference(
+      ReferenceInterpreter::run(canonicalized.graph(), bindings));
+  require_bits_equal(
+      require_output_tensor(source_result, "result").data(),
+      require_output_tensor(canonical_result, "result").data());
 }
 
 }  // namespace

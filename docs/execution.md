@@ -50,6 +50,13 @@ result has arena storage. The current kernel selection is exact:
 | every other valid rank-2 through rank-4 `MatMul` | `matmul_batched_f32` |
 | `Relu` | `relu_contiguous_f32` |
 
+Axis-aware `Softmax` is valid graph IR and is executable through the reference
+interpreter, but it does not have a dense kernel in this slice.
+`ExecutionPlanCompiler` and `ExecutionPlanVerifier` return
+`plan_operation_unsupported` before accepting a candidate for any graph that
+contains it. Graph arena storage lowering remains available because output
+size and lifetime reconstruction do not require a kernel.
+
 Plan preflight bounds values, steps, outputs, owned constant bytes, scalar
 steps, arena buffers, and workspace bytes before execution state is allocated.
 Arena offsets remain 64-byte aligned. There are no views, in-place aliases,
