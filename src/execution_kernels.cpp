@@ -271,9 +271,7 @@ void execute_softmax_last_axis(
   assert(input.type() == output.type());
   assert(input.layout().rank() > 0U);
   const std::size_t last_axis = input.layout().rank() - 1U;
-  const std::span<const std::uint64_t> strides =
-      input.layout().strides_elements();
-  assert(strides[last_axis] == 1U);
+  assert(input.layout().strides_elements()[last_axis] == 1U);
   const std::uint64_t slice_extent = extent(input, last_axis);
   assert(slice_extent > 0U);
   assert(input.layout().elements() % slice_extent == 0U);
