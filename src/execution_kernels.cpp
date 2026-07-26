@@ -1,10 +1,12 @@
 #include "execution_kernels.hpp"
 
 #include <array>
+#include <bit>
 #include <cassert>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <span>
 
 namespace tensorkiln::detail {
@@ -128,7 +130,8 @@ void execute_add_broadcast(
     const std::span<const float* const> value_data,
     float* const output_data) noexcept {
   assert(step.operands().size() == 2U);
-  const PlanValue& output = value_at(values, step.output());
+  [[maybe_unused]] const PlanValue& output =
+      value_at(values, step.output());
   const PlanValue& left = value_at(values, step.operands()[0]);
   const PlanValue& right = value_at(values, step.operands()[1]);
   const float* const left_data = data_at(value_data, left.source_value());
@@ -253,7 +256,127 @@ void execute_relu(const ExecutionStep& step,
   }
 }
 
+[[nodiscard]] float canonical_quiet_nan() noexcept {
+  return std::bit_cast<float>(UINT32_C(0x7fc00000));
+}
+
+void execute_softmax_last_axis(
+    const ExecutionStep& step, const std::span<const PlanValue> values,
+    const std::span<const float* const> value_data,
+    float* const output_data) noexcept {
+  assert(step.operands().size() == 1U);
+  [[maybe_unused]] const PlanValue& output =
+      value_at(values, step.output());
+  const PlanValue& input = value_at(values, step.operands()[0]);
+  assert(input.type() == output.type());
+  assert(input.layout().rank() > 0U);
+  const std::size_t last_axis = input.layout().rank() - 1U;
+  assert(input.layout().strides_elements()[last_axis] == 1U);
+  const std::uint64_t slice_extent = extent(input, last_axis);
+  assert(slice_extent > 0U);
+  assert(input.layout().elements() % slice_extent == 0U);
+  const std::uint64_t slice_count =
+      input.layout().elements() / slice_extent;
+  const float* const input_data =
+      data_at(value_data, input.source_value());
+  assert(input_data != output_data);
+
+  for (std::uint64_t slice = 0U; slice < slice_count; ++slice) {
+    const std::uint64_t slice_base = slice * slice_extent;
+    float maximum = -std::numeric_limits<float>::infinity();
+    std::uint64_t positive_infinities = 0U;
+    bool has_nan = false;
+
+    for (std::uint64_t coordinate = 0U; coordinate < slice_extent;
+         ++coordinate) {
+      const std::size_t offset =
+          static_cast<std::size_t>(slice_base + coordinate);
+      const float value = input_data[offset];
+      if (std::isnan(value)) {
+        has_nan = true;
+      } else if (std::isinf(value) && value > 0.0F) {
+        ++positive_infinities;
+      } else if (value > maximum) {
+        maximum = value;
+      }
+    }
+
+    if (has_nan) {
+      for (std::uint64_t coordinate = 0U; coordinate < slice_extent;
+           ++coordinate) {
+        output_data[static_cast<std::size_t>(slice_base + coordinate)] =
+            canonical_quiet_nan();
+      }
+      continue;
+    }
+
+    if (positive_infinities > 0U) {
+      const float probability = static_cast<float>(
+          1.0 / static_cast<double>(positive_infinities));
+      for (std::uint64_t coordinate = 0U; coordinate < slice_extent;
+           ++coordinate) {
+        const std::size_t offset =
+            static_cast<std::size_t>(slice_base + coordinate);
+        const float value = input_data[offset];
+        output_data[offset] =
+            std::isinf(value) && value > 0.0F ? probability : 0.0F;
+      }
+      continue;
+    }
+
+    if (maximum == -std::numeric_limits<float>::infinity()) {
+      for (std::uint64_t coordinate = 0U; coordinate < slice_extent;
+           ++coordinate) {
+        output_data[static_cast<std::size_t>(slice_base + coordinate)] =
+            canonical_quiet_nan();
+      }
+      continue;
+    }
+
+    double denominator = 0.0;
+    for (std::uint64_t coordinate = 0U; coordinate < slice_extent;
+         ++coordinate) {
+      const std::size_t offset =
+          static_cast<std::size_t>(slice_base + coordinate);
+      const float value = input_data[offset];
+      const float exponential =
+          value == -std::numeric_limits<float>::infinity()
+              ? 0.0F
+              : static_cast<float>(
+                    std::exp(static_cast<double>(value) -
+                             static_cast<double>(maximum)));
+      output_data[offset] = exponential;
+      denominator = round_to_binary64(
+          denominator + static_cast<double>(exponential));
+    }
+    assert(denominator >= 1.0);
+    for (std::uint64_t coordinate = 0U; coordinate < slice_extent;
+         ++coordinate) {
+      const std::size_t offset =
+          static_cast<std::size_t>(slice_base + coordinate);
+      output_data[offset] = static_cast<float>(
+          static_cast<double>(output_data[offset]) / denominator);
+    }
+  }
+}
+
 }  // namespace
+
+void prepare_dense_kernel_runtime(
+    const std::span<const ExecutionStep> steps) noexcept {
+  for (const ExecutionStep& step : steps) {
+    if (step.kernel() != DenseKernelKind::softmax_last_axis_f32) {
+      continue;
+    }
+    using ExpFunction = double (*)(double);
+    ExpFunction volatile exp_function =
+        static_cast<ExpFunction>(std::exp);
+    const volatile double zero = 0.0;
+    const volatile double initialized = exp_function(zero);
+    static_cast<void>(initialized);
+    return;
+  }
+}
 
 void execute_dense_kernel(
     const ExecutionStep& step, const std::span<const PlanValue> values,
@@ -275,6 +398,9 @@ void execute_dense_kernel(
       return;
     case DenseKernelKind::relu_contiguous_f32:
       execute_relu(step, values, value_data, output);
+      return;
+    case DenseKernelKind::softmax_last_axis_f32:
+      execute_softmax_last_axis(step, values, value_data, output);
       return;
   }
 }

@@ -23,6 +23,7 @@ TEST_SOURCES := tests/test_arena_planner.cpp tests/test_arena_seeded.cpp \
                 tests/test_aligned_workspace.cpp \
                 tests/test_dead_code_elimination.cpp \
                 tests/test_execution.cpp tests/test_execution_seeded.cpp \
+                tests/test_softmax_execution_seeded.cpp \
                 tests/test_graph.cpp \
                 tests/test_execution_plan.cpp \
                 tests/test_execution_plan_verifier.cpp \
@@ -36,7 +37,7 @@ TEST_SOURCES := tests/test_arena_planner.cpp tests/test_arena_seeded.cpp \
                 tests/test_structural_canonicalization_seeded.cpp \
                 tests/test_tensor_type.cpp
 EXAMPLE_SOURCES := examples/inspect_graph.cpp examples/plan_arena.cpp \
-                   examples/execute_graph.cpp
+                   examples/execute_graph.cpp examples/execute_softmax.cpp
 NOALLOC_SOURCE := tests/execution_noalloc_main.cpp
 
 LIB_OBJECTS := $(patsubst %.cpp,$(BUILD_DIR)/%.o,$(LIB_SOURCES))
@@ -51,6 +52,8 @@ TEST_BINARY := $(BUILD_DIR)/tensorkiln_tests
 EXAMPLE_BINARIES := $(patsubst examples/%.cpp,$(BUILD_DIR)/%,\
                     $(EXAMPLE_SOURCES))
 NOALLOC_BINARY := $(BUILD_DIR)/execution_noalloc
+VISUALS_TEST := tests/test_readme_visuals.py
+VISUALS_TOOL := tools/render_readme_visuals.py
 NOALLOC_WRAP_LDFLAGS := -Wl,--wrap=malloc -Wl,--wrap=calloc \
                          -Wl,--wrap=realloc -Wl,--wrap=aligned_alloc \
                          -Wl,--wrap=posix_memalign
@@ -86,7 +89,8 @@ endif
 
 ARFLAGS := rcsD
 
-.PHONY: all test noalloc check sanitize oracle example run-examples clean help
+.PHONY: all test noalloc check sanitize oracle example run-examples visuals \
+        visuals-check visuals-generate visuals-verify clean help
 
 all: $(LIBRARY) $(EXAMPLE_BINARIES)
 
@@ -94,6 +98,8 @@ test: $(TEST_BINARY) run-examples $(TEST_AUDIT_BINARY)
 	$(TEST_BINARY)
 ifeq ($(PROFILE),release)
 	$(NOALLOC_BINARY)
+	python3 -B -I $(VISUALS_TEST)
+	python3 -B -I $(VISUALS_TOOL) --build-dir $(BUILD_DIR) --check
 endif
 
 noalloc: $(NOALLOC_BINARY)
@@ -111,6 +117,7 @@ sanitize:
 
 oracle:
 	python3 -I tools/oracle.py --check tests/oracle_fixture.hpp
+	python3 -I tools/softmax_oracle.py --check tests/softmax_oracle_fixture.hpp
 
 example: run-examples
 
@@ -118,6 +125,20 @@ run-examples: $(EXAMPLE_BINARIES)
 	$(BUILD_DIR)/inspect_graph
 	$(BUILD_DIR)/plan_arena
 	$(BUILD_DIR)/execute_graph
+	$(BUILD_DIR)/execute_softmax
+
+visuals:
+	$(MAKE) PROFILE=release visuals-generate
+
+visuals-check:
+	$(MAKE) PROFILE=release visuals-verify
+
+visuals-generate: $(EXAMPLE_BINARIES)
+	python3 -B -I $(VISUALS_TOOL) --build-dir $(BUILD_DIR)
+
+visuals-verify: $(EXAMPLE_BINARIES)
+	python3 -B -I $(VISUALS_TEST)
+	python3 -B -I $(VISUALS_TOOL) --build-dir $(BUILD_DIR) --check
 
 $(LIBRARY): $(LIB_OBJECTS)
 	@mkdir -p $(dir $@)
@@ -145,7 +166,7 @@ clean:
 	rm -rf build
 
 help:
-	@echo 'Targets: all test noalloc check sanitize oracle example clean help'
+	@echo 'Targets: all test noalloc check sanitize oracle example visuals visuals-check clean help'
 	@echo 'Profiles: debug (default), release, sanitize'
 	@echo 'Example: make -j2 CXX=g++ PROFILE=release test'
 

@@ -24,6 +24,7 @@ namespace {
     case DenseKernelKind::matmul_rank2_f32:
     case DenseKernelKind::matmul_batched_f32:
     case DenseKernelKind::relu_contiguous_f32:
+    case DenseKernelKind::softmax_last_axis_f32:
       return true;
   }
   return false;
@@ -81,6 +82,19 @@ class ReverseKernelClassifier final {
     }
     return DenseKernelKind::relu_contiguous_f32;
   }
+  [[nodiscard]] std::optional<DenseKernelKind> operator()(
+      const SoftmaxOp& operation) const noexcept {
+    if (node_.inputs().size() != 1U) {
+      return std::nullopt;
+    }
+    const TensorType* input = graph_.type(node_.inputs()[0]);
+    const std::size_t rank = node_.output_type().shape().rank();
+    if (input == nullptr || *input != node_.output_type() || rank == 0U ||
+        static_cast<std::size_t>(operation.axis) != rank - 1U) {
+      return std::nullopt;
+    }
+    return DenseKernelKind::softmax_last_axis_f32;
+  }
 
  private:
   const VerifiedGraph& graph_;
@@ -103,6 +117,19 @@ struct ReverseStepEvidence final {
   if (std::holds_alternative<AddOp>(node.operation()) ||
       std::holds_alternative<ReluOp>(node.operation())) {
     return Result<std::uint64_t>::success(node.output_type().numel());
+  }
+  if (std::holds_alternative<SoftmaxOp>(node.operation())) {
+    constexpr std::uint64_t passes = 3U;
+    if (node.output_type().numel() >
+        std::numeric_limits<std::uint64_t>::max() / passes) {
+      return Result<std::uint64_t>::failure(
+          detail::execution_plan_error(
+              ErrorCode::plan_work_overflow,
+              "scalar work overflows uint64 at " +
+                  detail::node_label(node.id())));
+    }
+    return Result<std::uint64_t>::success(
+        node.output_type().numel() * passes);
   }
   if (!std::holds_alternative<MatMulOp>(node.operation()) ||
       node.inputs().size() != 2U) {

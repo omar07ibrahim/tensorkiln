@@ -75,9 +75,15 @@ struct ConstantOp final {
 struct AddOp final {};
 struct MatMulOp final {};
 struct ReluOp final {};
+struct SoftmaxOp final {
+  std::uint32_t axis;
+
+  friend bool operator==(const SoftmaxOp&, const SoftmaxOp&) noexcept =
+      default;
+};
 
 using Operation =
-    std::variant<InputOp, ConstantOp, AddOp, MatMulOp, ReluOp>;
+    std::variant<InputOp, ConstantOp, AddOp, MatMulOp, ReluOp, SoftmaxOp>;
 
 class Node final {
  public:
@@ -193,6 +199,8 @@ class GraphBuilder final {
   [[nodiscard]] Result<ValueId> add(ValueId left, ValueId right);
   [[nodiscard]] Result<ValueId> matmul(ValueId left, ValueId right);
   [[nodiscard]] Result<ValueId> relu(ValueId input);
+  [[nodiscard]] Result<ValueId> softmax(ValueId input,
+                                        std::int64_t axis = -1);
 
   [[nodiscard]] Result<OutputId> output(std::string name, ValueId value);
   [[nodiscard]] Result<VerifiedGraph> finish() &&;

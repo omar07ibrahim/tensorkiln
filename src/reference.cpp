@@ -204,6 +204,114 @@ struct Preflight final {
   return output;
 }
 
+[[nodiscard]] float canonical_quiet_nan() noexcept {
+  return std::bit_cast<float>(UINT32_C(0x7fc00000));
+}
+
+[[nodiscard]] std::vector<float> evaluate_softmax(
+    const Tensor& input, const DenseLayout& layout,
+    const std::uint32_t canonical_axis) {
+  const std::size_t axis = static_cast<std::size_t>(canonical_axis);
+  assert(layout.rank > 0U);
+  assert(axis < layout.rank);
+  const std::size_t axis_extent = layout.extents[axis];
+  const std::size_t axis_stride = layout.strides[axis];
+  assert(axis_extent > 0U);
+  assert(axis_stride > 0U);
+  assert(axis_extent <=
+         std::numeric_limits<std::size_t>::max() / axis_stride);
+  const std::size_t axis_block = axis_extent * axis_stride;
+  assert(axis_block > 0U);
+  assert(layout.elements % axis_block == 0U);
+  const std::size_t outer_count = layout.elements / axis_block;
+
+  std::vector<float> output(layout.elements);
+  for (std::size_t outer = 0U; outer < outer_count; ++outer) {
+    const std::size_t outer_base = outer * axis_block;
+    for (std::size_t inner = 0U; inner < axis_stride; ++inner) {
+      const std::size_t slice_base = outer_base + inner;
+      float maximum = -std::numeric_limits<float>::infinity();
+      std::size_t positive_infinities = 0U;
+      bool has_nan = false;
+
+      for (std::size_t coordinate = 0U; coordinate < axis_extent;
+           ++coordinate) {
+        const std::size_t offset =
+            slice_base + coordinate * axis_stride;
+        assert(offset < input.data().size());
+        const float value = input.data()[offset];
+        if (std::isnan(value)) {
+          has_nan = true;
+        } else if (std::isinf(value) && value > 0.0F) {
+          ++positive_infinities;
+        } else if (value > maximum) {
+          maximum = value;
+        }
+      }
+
+      if (has_nan) {
+        for (std::size_t coordinate = 0U; coordinate < axis_extent;
+             ++coordinate) {
+          output[slice_base + coordinate * axis_stride] =
+              canonical_quiet_nan();
+        }
+        continue;
+      }
+
+      if (positive_infinities > 0U) {
+        const float probability = static_cast<float>(
+            1.0 / static_cast<double>(positive_infinities));
+        for (std::size_t coordinate = 0U; coordinate < axis_extent;
+             ++coordinate) {
+          const std::size_t offset =
+              slice_base + coordinate * axis_stride;
+          output[offset] =
+              std::isinf(input.data()[offset]) &&
+                      input.data()[offset] > 0.0F
+                  ? probability
+                  : 0.0F;
+        }
+        continue;
+      }
+
+      if (maximum == -std::numeric_limits<float>::infinity()) {
+        for (std::size_t coordinate = 0U; coordinate < axis_extent;
+             ++coordinate) {
+          output[slice_base + coordinate * axis_stride] =
+              canonical_quiet_nan();
+        }
+        continue;
+      }
+
+      double denominator = 0.0;
+      for (std::size_t coordinate = 0U; coordinate < axis_extent;
+           ++coordinate) {
+        const std::size_t offset =
+            slice_base + coordinate * axis_stride;
+        const float value = input.data()[offset];
+        const float exponential =
+            value == -std::numeric_limits<float>::infinity()
+                ? 0.0F
+                : static_cast<float>(
+                      std::exp(static_cast<double>(value) -
+                               static_cast<double>(maximum)));
+        output[offset] = exponential;
+        denominator = round_to_binary64(
+            denominator + static_cast<double>(exponential));
+      }
+      assert(denominator >= 1.0);
+      for (std::size_t coordinate = 0U; coordinate < axis_extent;
+           ++coordinate) {
+        const std::size_t offset =
+            slice_base + coordinate * axis_stride;
+        output[offset] = static_cast<float>(
+            static_cast<double>(output[offset]) / denominator);
+      }
+    }
+  }
+  return output;
+}
+
 [[nodiscard]] std::optional<std::size_t> find_input(
     const VerifiedGraph& graph, const std::string_view name) {
   const std::span<const Node> nodes = graph.nodes();
@@ -387,6 +495,14 @@ struct Preflight final {
             [elements](const ReluOp&) {
               return std::optional<std::uint64_t>{elements};
             },
+            [elements](const SoftmaxOp&) {
+              constexpr std::uint64_t passes = 3U;
+              if (elements >
+                  std::numeric_limits<std::uint64_t>::max() / passes) {
+                return std::optional<std::uint64_t>{};
+              }
+              return std::optional<std::uint64_t>{elements * passes};
+            },
         },
         node.operation());
 
@@ -526,6 +642,15 @@ Result<ReferenceResult> ReferenceInterpreter::run(
                   static_cast<std::size_t>(node.inputs()[0].ordinal());
               assert(input_index < values.size());
               return evaluate_relu(values[input_index]);
+            },
+            [&](const SoftmaxOp& operation) {
+              assert(node.inputs().size() == 1U);
+              const std::size_t input_index =
+                  static_cast<std::size_t>(node.inputs()[0].ordinal());
+              assert(input_index < values.size());
+              return evaluate_softmax(
+                  values[input_index], execution.layouts[input_index],
+                  operation.axis);
             },
         },
         node.operation());

@@ -112,6 +112,12 @@ std::string_view error_code_name(const ErrorCode code) noexcept {
       return "plan_kernel_invalid";
     case ErrorCode::plan_kernel_incompatible:
       return "plan_kernel_incompatible";
+    case ErrorCode::softmax_rank_unsupported:
+      return "softmax_rank_unsupported";
+    case ErrorCode::softmax_axis_out_of_range:
+      return "softmax_axis_out_of_range";
+    case ErrorCode::plan_operation_unsupported:
+      return "plan_operation_unsupported";
   }
   return "unknown_error";
 }

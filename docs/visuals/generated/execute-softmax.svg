@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="506" viewBox="0 0 1080 506" role="img" aria-labelledby="title description">
+  <title id="title">TensorKiln crafted Softmax correctness evidence</title>
+  <desc id="description">Complete stdout captured from the verified release example: five crafted policy slices, 20 of 20 bit agreements, and the reference-only axis-zero boundary. This is not a benchmark or an arbitrary-libm bit-exactness claim.</desc>
+  <rect width="100%" height="100%" rx="18" fill="#0d1117"/>
+  <text x="32" y="40" fill="#f0f6fc" font-family="DejaVu Sans, system-ui, sans-serif" font-size="21" font-weight="700">Crafted Softmax correctness evidence</text>
+  <text x="32" y="66" fill="#8b949e" font-family="DejaVu Sans, system-ui, sans-serif" font-size="12">COMPLETE RELEASE STDOUT · FIVE EXACT SLICES · NOT A BENCHMARK</text>
+  <rect x="24" y="82" width="1032" height="390" rx="10" fill="#161b22" stroke="#30363d"/>
+  <g font-family="DejaVu Sans Mono, ui-monospace, SFMono-Regular, Consolas, monospace" font-size="13" xml:space="preserve">
+    <text x="48" y="140" fill="#79c0ff" font-weight="600">$ &lt;release-build&gt;/execute_softmax</text>
+    <text x="48" y="162" fill="#d2a8ff" font-weight="600">=== verified Softmax execution ===</text>
+    <text x="48" y="184" fill="#8b949e" font-weight="400">scope: deterministic correctness example; not a benchmark</text>
+    <text x="48" y="206" fill="#79c0ff" font-weight="600">plan {shape=f32[5,4], axis=1, kernel=softmax_last_axis_f32, scalar_steps=60, workspace_bytes=128, audited=true}</text>
+    <text x="48" y="228" fill="#f2cc60" font-weight="400">slice finite_equal bits=[0x3e800000, 0x3e800000, 0x3e800000, 0x3e800000]</text>
+    <text x="48" y="250" fill="#f2cc60" font-weight="400">slice nan_precedence bits=[0x7fc00000, 0x7fc00000, 0x7fc00000, 0x7fc00000]</text>
+    <text x="48" y="272" fill="#f2cc60" font-weight="400">slice positive_infinity_split bits=[0x3f000000, 0x00000000, 0x3f000000, 0x00000000]</text>
+    <text x="48" y="294" fill="#f2cc60" font-weight="400">slice all_negative_infinity bits=[0x7fc00000, 0x7fc00000, 0x7fc00000, 0x7fc00000]</text>
+    <text x="48" y="316" fill="#f2cc60" font-weight="400">slice mixed_negative_infinity bits=[0x00000000, 0x3f000000, 0x3f000000, 0x00000000]</text>
+    <text x="48" y="338" fill="#7ee787" font-weight="600">agreement {executor_reference_bits=20/20, executor_fixture_bits=20/20}</text>
+    <text x="48" y="360" fill="#d2a8ff" font-weight="600">=== optimized axis boundary ===</text>
+    <text x="48" y="382" fill="#a5d6ff" font-weight="400">reference_axis0 {status=accepted, scalar_steps=80}</text>
+    <text x="48" y="404" fill="#ff7b72" font-weight="400">optimized_axis0 {code=plan_operation_unsupported, message=plan backend does not support softmax axis 0 at #n1}</text>
+    <text x="48" y="426" fill="#7ee787" font-weight="600">verified: last-axis execution and reference agree; valid axis 0 remains reference-only</text>
+  </g>
+  <text x="32" y="492" fill="#6e7681" font-family="DejaVu Sans, system-ui, sans-serif" font-size="10">60 optimized kernel steps · 80 axis-zero reference total · fixture-scoped bits</text>
+  <text x="1048" y="492" text-anchor="end" fill="#6e7681" font-family="DejaVu Sans Mono, ui-monospace, monospace" font-size="10">stdout sha256:a8fde11bd37ec798</text>
+</svg>

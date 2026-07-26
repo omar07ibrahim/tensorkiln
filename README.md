@@ -16,12 +16,56 @@ reference interpreter.
 
 > **Status:** the current vertical slice includes the bounded graph front-end,
 > independent Python and C++ reference paths, explicit dead-code elimination
-> and structural canonicalization, reverse-verified arena planning, five dense
-> row-major kernels, and a synchronous allocation-free session run path.
+> and structural canonicalization, reverse-verified arena planning, six dense
+> row-major kernel kinds, and a synchronous allocation-free session run path.
+> Axis-aware `Softmax` is available throughout the graph and reference layers;
+> the optimized plan supports only its canonical last axis, while other valid
+> axes remain reference-only.
 > Fusion, views and in-place aliases, scratch, prepacking, broader operators,
 > SIMD, threading, cache-aware kernels, and benchmarks remain outside the
 > implemented boundary. The non-prerelease v0.1.0 contract below is the target;
 > **Available now** is the exact current subset.
+
+## See the current slice execute
+
+[![Complete output from the verified TensorKiln dense execution example](docs/visuals/generated/execute-graph.svg)](docs/visuals/generated/execute-graph.svg)
+
+The panel above is the complete stdout of the checked release example, not a
+mockup or benchmark. It shows the selected `MatMul -> Add -> Relu` kernels,
+their arena placements, the result `[4.5, 11, 0, 11]`, and the final raw-bit
+comparison with the separately implemented reference interpreter. The
+[plain-text transcript](docs/visuals/generated/execute-graph.txt) and
+[SHA-256 evidence manifest](docs/visuals/generated/manifest.json) are committed
+beside the image.
+
+The separate
+[`execute_softmax`](examples/execute_softmax.cpp) example exercises a verified
+last-axis `softmax_last_axis_f32` plan in audited mode. It prints the raw output
+bits for five deliberately exact policy slices, requires all 20 bits to agree
+with both the independent interpreter and an explicit fixture, then
+reference-executes a valid axis-zero graph and shows its typed rejection by the
+optimized planner.
+
+[![Complete output from the crafted TensorKiln Softmax correctness example](docs/visuals/generated/execute-softmax.svg)](docs/visuals/generated/execute-softmax.svg)
+
+This is the complete stdout of the real release executable. The
+[plain-text Softmax transcript](docs/visuals/generated/execute-softmax.txt)
+shows 60 optimized kernel steps, 80 total reference steps for the axis-zero
+case, both 20/20 bit-agreement checks, and the typed reference-only boundary.
+This narrow fixture covers equal finite inputs and the documented NaN/infinity
+branches; it does not claim that arbitrary finite `std::exp` results are
+bit-identical across math libraries, and it is not a benchmark. The
+[evidence manifest](docs/visuals/generated/manifest.json) binds the complete
+transcript and image to SHA-256 hashes of the captured executable and to the
+commit, tree, and Git blob IDs of every declared build input.
+
+Rebuild and byte-check every generated visual with the standard-library-only
+renderer:
+
+```bash
+make -j2 visuals
+make visuals-check
+```
 
 ## Why this exists
 
@@ -29,24 +73,20 @@ Tensor runtimes often hide graph semantics, allocation policy, and numerical
 trade-offs behind a large dependency stack. TensorKiln keeps one useful slice
 small enough to audit end to end:
 
-```text
-VerifiedGraph
-    -> optional dead-code elimination
-    -> optional exact structural canonicalization
-    -> ExecutionPlanCompiler
-         -> select a dense kernel and arena offset for each compute node
-         -> independently reconstruct layouts, storage, lifetimes and work
-         -> verify the complete candidate before returning it
-    -> immutable ExecutionPlan
-    -> ExecutionSession: create -> bind -> run -> result
-```
+[![TensorKiln implemented architecture and trust boundaries](docs/visuals/architecture.svg)](docs/visuals/architecture.svg)
+
+*Architecture of the implemented vertical slice. Solid arrows are API and
+runtime flow; dashed arrows are evidence produced by examples and tests, not
+work performed inside `ExecutionSession::run()`. Open the image for the
+full-size labels.*
 
 These remain explicit API calls: plan compilation operates on whichever
 verified graph the caller supplies and never silently runs graph rewrites. The
-goal is evidence, not a production-runtime claim. Executed results are checked
-against a separately implemented interpreter under a documented numerical
-policy, and every executable plan is reconstructed by a verifier that does not
-trust compiler-derived operands, layouts, lifetimes, accounting, or storage.
+goal is evidence, not a production-runtime claim. Examples and differential
+tests check executed results against a separately implemented interpreter under
+a documented numerical policy, and every executable plan is reconstructed by a
+verifier that does not trust compiler-derived operands, layouts, lifetimes,
+accounting, or storage.
 
 ## Target v0.1.0 contract
 
@@ -73,21 +113,25 @@ The current vertical slice is small but runnable and inspectable:
 - checked scalar and rank 1-4 tensor types with explicit element/byte ceilings;
 - trailing multidirectional broadcasting and rank 2-4 batched `MatMul`
   inference;
-- a transactional `GraphBuilder` for `Input`, `Constant`, `Add`, `MatMul`, and
-  `Relu`;
+- a transactional `GraphBuilder` for `Input`, `Constant`, `Add`, `MatMul`,
+  `Relu`, and axis-aware `Softmax`, including canonical negative axes;
 - owner-tagged handles that reject accidental cross-graph use;
 - immutable verified graphs with deterministic, golden-tested IR dumps;
 - graph-wide node, output, name, tensor, and cumulative constant-data limits;
 - an isolated contiguous reference interpreter with owner-safe result lookup,
   exact payload/work ceilings, and fail-closed floating-point environment
   checks;
+- subtract-maximum reference `Softmax` on every valid rank 1-4 axis, with
+  fixed traversal, explicit NaN/infinity semantics, and a separate
+  high-precision Python `Decimal` tolerance fixture;
 - bit-exact Python-stdlib fixtures consumed at real `MatMul -> Add -> Relu`
   boundaries;
 - deterministic dead-code elimination that preserves the complete input
   contract, output declaration order and aliases, exact source construction
   limits, and bitwise constant payloads;
 - deterministic structural canonicalization with exact CSE for `Add`, `MatMul`,
-  and `Relu`, plus the semantics-preserving `Relu(Relu(x)) -> Relu(x)` rule;
+  `Relu`, and canonical-axis `Softmax`, plus the semantics-preserving
+  `Relu(Relu(x)) -> Relu(x)` rule;
 - an output-alias guard that prevents equivalent source outputs from silently
   collapsing into one result value;
 - owner-safe, composable provenance with stable pass statistics and
@@ -98,10 +142,10 @@ The current vertical slice is small but runnable and inspectable:
 - an independent placement verifier with checked arithmetic, exact workspace
   accounting, canonical dumps, stable diagnostics, and seeded pairwise-oracle
   coverage;
-- a graph-to-arena storage projection that gives every `Add`, `MatMul`, and
-  `Relu` result a dense sequential step and buffer ordinal, leaves inputs and
-  constants external, retains dead compute, and keeps arena-backed outputs live
-  through the final compute step;
+- a graph-to-arena storage projection that gives every `Add`, `MatMul`, `Relu`,
+  and `Softmax` result a dense sequential step and buffer ordinal, leaves
+  inputs and constants external, retains dead compute, and keeps arena-backed
+  outputs live through the final compute step;
 - mandatory reverse reconstruction of graph mappings, lifetimes, limits,
   statistics, and allocations before a planned graph projection is returned,
   with seeded DAG, heterogeneous `MatMul`, ownership, fault-injection, and exact
@@ -110,7 +154,10 @@ The current vertical slice is small but runnable and inspectable:
   layouts, external-input and owned-constant storage, arena-backed results,
   deterministic dump, exact limits, and checked work accounting;
 - independently verified selection of `Add` contiguous/broadcast, rank-2 and
-  batched `MatMul`, and contiguous `Relu` kernels;
+  batched `MatMul`, contiguous `Relu`, and last-axis
+  `softmax_last_axis_f32` kernels;
+- a typed `plan_operation_unsupported` boundary for graph operations, including
+  valid non-last-axis `Softmax`, that have no optimized kernel;
 - an `ExecutionSession` with a 64-byte-aligned workspace, outer guards for
   every non-empty workspace, explicit input binding, stale-safe result lookup,
   and an optional per-kernel shadow audit that rejects writes outside the exact
@@ -119,20 +166,40 @@ The current vertical slice is small but runnable and inspectable:
   precision, and gradual `f32` underflow without changing the caller's
   floating-point modes;
 - a release-profile allocation probe that wraps C and C++ allocation entry
-  points and covers the first and repeated `run()` for all five kernels,
-  regular and audited sessions, result lookup, and a zero-work external plan;
+  points and covers first and repeated `run()` calls for the five algebraic
+  kernels, warm first and repeated last-axis `Softmax`, regular and audited
+  sessions, result lookup, and a zero-work external plan;
 - a replayable seeded differential corpus of 128 dense DAGs, with arena reuse
-  and raw-bit comparison against the independent reference interpreter.
+  and raw-bit comparison against the independent reference interpreter, plus a
+  separate seeded last-axis `Softmax` corpus using tolerance, normalization,
+  and translation-invariance checks.
 
 Validation failures never consume an ID, reserve a name, or mutate resource
 counters. Constants own their exact IEEE-754 payload; the canonical dump uses a
 stable bitwise fingerprint and does not depend on locale or pointer values.
+
+[![Verified interval arena reuse derived from plan_arena output](docs/visuals/generated/arena-reuse.svg)](docs/visuals/generated/arena-reuse.svg)
+
+*The real `plan_arena` example places 384 bytes of aligned reservations in a
+192-byte workspace. Adjacent bars reuse a physical slot only where half-open
+lifetimes meet at an exact boundary. This is allocator evidence, not a
+performance measurement; the
+[source transcript](docs/visuals/generated/arena-plan.txt) is available for
+inspection.*
+
+[![TensorKiln clean-clone reproduction and validation workflow](docs/visuals/reproduce.svg)](docs/visuals/reproduce.svg)
+
+*The primary release target compiles and checks the current slice, exercises
+every checked example, probes allocation-free execution, and
+rejects stale generated visuals. Sanitizer and independent-fixture checks stay
+explicit so each failure has a narrow meaning.*
 
 ```bash
 make -j2 PROFILE=debug test
 make -j2 PROFILE=release test
 make sanitize
 make oracle
+make visuals-check
 ```
 
 TensorKiln v0.1.0-alpha.1 is a source-only milestone with an experimental 0.x
@@ -143,15 +210,18 @@ v1.0.0. See the
 [alpha release notes](docs/releases/v0.1.0-alpha.1.md) and
 [changelog](CHANGELOG.md) for the shipped boundary and known limitations.
 
-The debug and release commands run the strict dependency-free suite and all
-three checked examples. Release additionally runs the allocation probe. The
-examples inspect the graph-rewrite pipeline, show verified interval reuse, and
-execute an audited `MatMul -> Add -> Relu` plan while requiring raw-bit
-agreement with the independent interpreter. The sanitizer target runs the same
+The debug and release commands run the strict dependency-free suite and every
+checked example. Release additionally runs the allocation probe and
+rejects stale generated visuals. The examples inspect the graph-rewrite
+pipeline, show verified interval reuse, and execute an audited
+`MatMul -> Add -> Relu` plan while requiring raw-bit agreement with the
+independent interpreter. A separate audited Softmax example exposes the
+last-axis kernel, exact non-finite policy, independent-reference agreement, and
+the reference-only non-last-axis boundary. The sanitizer target runs the same
 suite under AddressSanitizer and UndefinedBehaviorSanitizer; the oracle target
-proves that the committed golden fixture still matches its independent
-generator. See
-[the graph IR contract](docs/ir.md) for construction invariants and
+proves that both committed numerical fixtures still match their independent
+generators. See [the graph IR contract](docs/ir.md) for construction invariants
+and
 [the reference interpreter contract](docs/reference.md) for execution,
 resource, lifetime, and numerical semantics. See
 [the compiler-pass contract](docs/compiler.md) for dead-code roots, semantic

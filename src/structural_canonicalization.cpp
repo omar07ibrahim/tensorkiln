@@ -20,6 +20,7 @@ enum class CanonicalOperation : std::uint8_t {
   add,
   matmul,
   relu,
+  softmax,
 };
 
 enum class SourceDisposition : std::uint8_t {
@@ -30,6 +31,7 @@ enum class SourceDisposition : std::uint8_t {
 
 struct CanonicalKey final {
   CanonicalOperation operation;
+  std::uint32_t operation_parameter;
   std::vector<std::uint32_t> operands;
   std::uint8_t element_type;
   std::vector<std::int64_t> extents;
@@ -41,10 +43,12 @@ struct CanonicalKey final {
 
   friend bool operator<(const CanonicalKey& left,
                         const CanonicalKey& right) noexcept {
-    return std::tie(left.operation, left.operands, left.element_type,
-                    left.extents, left.element_count, left.byte_count) <
-           std::tie(right.operation, right.operands, right.element_type,
-                    right.extents, right.element_count, right.byte_count);
+    return std::tie(left.operation, left.operation_parameter, left.operands,
+                    left.element_type, left.extents, left.element_count,
+                    left.byte_count) <
+           std::tie(right.operation, right.operation_parameter,
+                    right.operands, right.element_type, right.extents,
+                    right.element_count, right.byte_count);
   }
 };
 
@@ -58,6 +62,9 @@ struct CanonicalKey final {
   }
   if (std::holds_alternative<ReluOp>(operation)) {
     return CanonicalOperation::relu;
+  }
+  if (std::holds_alternative<SoftmaxOp>(operation)) {
+    return CanonicalOperation::softmax;
   }
   return std::nullopt;
 }
@@ -78,8 +85,11 @@ struct CanonicalKey final {
 
   const TensorType& type = definition.output_type();
   const std::span<const std::int64_t> type_extents = type.shape().extents();
+  const auto* softmax =
+      std::get_if<SoftmaxOp>(&definition.operation());
   return CanonicalKey{
       *operation,
+      softmax == nullptr ? 0U : softmax->axis,
       std::move(operand_ordinals),
       static_cast<std::uint8_t>(type.element_type()),
       std::vector<std::int64_t>(type_extents.begin(), type_extents.end()),

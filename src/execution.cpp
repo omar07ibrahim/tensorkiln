@@ -246,6 +246,7 @@ std::optional<TensorView> ExecutionResultView::output(
 
 ExecutionSession ExecutionSession::create(
     const ExecutionPlan& plan, const ExecutionSessionOptions options) {
+  detail::prepare_dense_kernel_runtime(plan.steps());
   return ExecutionSession(
       std::make_unique<detail::ExecutionSessionData>(plan, options));
 }

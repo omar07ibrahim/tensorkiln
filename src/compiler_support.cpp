@@ -123,6 +123,13 @@ Result<ValueId> replay_operation(
             }
             return builder.relu(operands[0]);
           },
+          [&builder, &source, operands](const SoftmaxOp& operation) {
+            if (operands.size() != 1U) {
+              return arity_error(source, 1U);
+            }
+            return builder.softmax(
+                operands[0], static_cast<std::int64_t>(operation.axis));
+          },
       },
       source.operation());
 
@@ -178,6 +185,10 @@ std::optional<Diagnostic> validate_replayed_node(
           [](const AddOp&) { return true; },
           [](const MatMulOp&) { return true; },
           [](const ReluOp&) { return true; },
+          [&result](const SoftmaxOp& source_operation) {
+            return source_operation ==
+                   std::get<SoftmaxOp>(result.operation());
+          },
       },
       source.operation());
   if (!operation_matches) {

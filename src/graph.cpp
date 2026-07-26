@@ -250,9 +250,14 @@ std::string VerifiedGraph::dump() const {
       result += "matmul %" +
                 std::to_string(definition.inputs()[0].ordinal()) + ", %" +
                 std::to_string(definition.inputs()[1].ordinal());
-    } else {
+    } else if (std::holds_alternative<ReluOp>(operation)) {
       result += "relu %" +
                 std::to_string(definition.inputs()[0].ordinal());
+    } else {
+      const auto& softmax = std::get<SoftmaxOp>(operation);
+      result += "softmax %" +
+                std::to_string(definition.inputs()[0].ordinal()) +
+                " {axis=" + std::to_string(softmax.axis) + "}";
     }
     result += " : " + definition.output_type().to_string() + "\n";
   }
@@ -465,6 +470,40 @@ Result<ValueId> GraphBuilder::relu(const ValueId input) {
     return Result<ValueId>::failure(value_error(input));
   }
   return commit_node(ReluOp{}, {input}, input_node->output_type());
+}
+
+Result<ValueId> GraphBuilder::softmax(const ValueId input,
+                                      const std::int64_t axis) {
+  if (finished_) {
+    return Result<ValueId>::failure(finished_error());
+  }
+  const Node* input_node = find(input);
+  if (input_node == nullptr) {
+    return Result<ValueId>::failure(value_error(input));
+  }
+
+  const std::size_t rank = input_node->output_type().shape().rank();
+  if (rank == 0U) {
+    return Result<ValueId>::failure(Diagnostic{
+        ErrorCode::softmax_rank_unsupported,
+        "softmax requires rank 1 through 4; input rank is 0",
+    });
+  }
+  const auto signed_rank = static_cast<std::int64_t>(rank);
+  if (axis < -signed_rank || axis >= signed_rank) {
+    return Result<ValueId>::failure(Diagnostic{
+        ErrorCode::softmax_axis_out_of_range,
+        "softmax axis " + std::to_string(axis) +
+            " is outside valid range [" + std::to_string(-signed_rank) +
+            "," + std::to_string(signed_rank - 1) + "] for rank " +
+            std::to_string(rank),
+    });
+  }
+  const std::int64_t normalized =
+      axis < 0 ? axis + signed_rank : axis;
+  return commit_node(
+      SoftmaxOp{static_cast<std::uint32_t>(normalized)}, {input},
+      input_node->output_type());
 }
 
 Result<OutputId> GraphBuilder::output(std::string name, const ValueId value) {

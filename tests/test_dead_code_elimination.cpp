@@ -33,6 +33,7 @@ using tensorkiln::ReferenceInterpreter;
 using tensorkiln::ReferenceResult;
 using tensorkiln::Shape;
 using tensorkiln::ShapeLimits;
+using tensorkiln::SoftmaxOp;
 using tensorkiln::Tensor;
 using tensorkiln::TensorLimits;
 using tensorkiln::TensorType;
@@ -598,6 +599,48 @@ TK_TEST("DCE rejects incomplete and foreign provenance with stable diagnostics")
   TK_REQUIRE_EQ(tensorkiln::error_code_name(
                     ErrorCode::provenance_domain_mismatch),
                 "provenance_domain_mismatch");
+}
+
+TK_TEST("DCE replays live Softmax axes and removes dead Softmax work") {
+  GraphBuilder builder;
+  const ValueId input =
+      require_value(builder.input("x", make_type({2, 3})));
+  const ValueId live =
+      require_value(builder.softmax(input, 0));
+  const ValueId dead =
+      require_value(builder.softmax(input, -1));
+  require_output(builder.output("result", live));
+  const VerifiedGraph source = require_graph(std::move(builder).finish());
+  const DeadCodeEliminationResult eliminated =
+      require_dce(DeadCodeElimination::run(source));
+
+  TK_REQUIRE_EQ(eliminated.graph().nodes().size(), 2U);
+  const auto* operation = std::get_if<SoftmaxOp>(
+      &eliminated.graph().nodes()[1].operation());
+  TK_REQUIRE(operation != nullptr);
+  TK_REQUIRE_EQ(operation->axis, 0U);
+  TK_REQUIRE(eliminated.provenance().for_source(dead) == nullptr);
+  const NodeProvenance* live_provenance =
+      eliminated.provenance().for_source(live);
+  TK_REQUIRE(live_provenance != nullptr);
+  TK_REQUIRE_EQ(live_provenance->result_value().ordinal(), 1U);
+
+  const std::array<float, 6U> data{{
+      0.0F, 1.0F, 2.0F,
+      3.0F, 4.0F, 5.0F,
+  }};
+  const std::array<InputBinding, 1U> bindings{{
+      InputBinding{"x", data},
+  }};
+  const ReferenceResult source_result =
+      require_reference(ReferenceInterpreter::run(source, bindings));
+  const ReferenceResult eliminated_result = require_reference(
+      ReferenceInterpreter::run(eliminated.graph(), bindings));
+  require_bits_equal(
+      require_output_tensor(source_result, "result").data(),
+      require_output_tensor(eliminated_result, "result").data());
+  TK_REQUIRE_EQ(source_result.scalar_steps(), 42U);
+  TK_REQUIRE_EQ(eliminated_result.scalar_steps(), 24U);
 }
 
 }  // namespace

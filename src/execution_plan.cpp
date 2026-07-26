@@ -32,6 +32,8 @@ std::string_view dense_kernel_kind_name(const DenseKernelKind kind) noexcept {
       return "matmul_batched_f32";
     case DenseKernelKind::relu_contiguous_f32:
       return "relu_contiguous_f32";
+    case DenseKernelKind::softmax_last_axis_f32:
+      return "softmax_last_axis_f32";
   }
   return "invalid";
 }

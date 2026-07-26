@@ -60,6 +60,15 @@ TK_TEST("Error codes have stable names") {
   TK_REQUIRE_EQ(tensorkiln::error_code_name(
                     ErrorCode::reference_scalar_step_limit_exceeded),
                 "reference_scalar_step_limit_exceeded");
+  TK_REQUIRE_EQ(
+      tensorkiln::error_code_name(ErrorCode::softmax_rank_unsupported),
+      "softmax_rank_unsupported");
+  TK_REQUIRE_EQ(
+      tensorkiln::error_code_name(ErrorCode::softmax_axis_out_of_range),
+      "softmax_axis_out_of_range");
+  TK_REQUIRE_EQ(
+      tensorkiln::error_code_name(ErrorCode::plan_operation_unsupported),
+      "plan_operation_unsupported");
 }
 
 }  // namespace

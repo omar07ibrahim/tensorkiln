@@ -12,6 +12,16 @@ in progress.
 
 ### Added
 
+- axis-aware `Softmax` graph and independent reference semantics for every
+  valid rank 1-4 axis, including canonical negative axes, subtract-maximum
+  evaluation, explicit NaN/infinity behavior, exact work accounting, rewrite
+  support, and graph-arena storage lowering;
+- an independently verified, allocation-free `softmax_last_axis_f32` kernel
+  with checked `3 * numel` work, exact non-finite policy, write auditing,
+  an explicit cold prewarm boundary, first/repeated warm allocation evidence,
+  and a separate seeded tolerance corpus;
+- a typed optimized-plan rejection for reference-only operations and valid
+  non-last-axis `Softmax`;
 - a move-only dense `ExecutionPlan`, produced from minimal kernel/placement
   decisions only after independent reconstruction of layouts, operands,
   storage, lifetimes, outputs, limits, and work accounting;
@@ -23,13 +33,20 @@ in progress.
 - an optional preallocated per-kernel write-set audit that detects changes
   outside the exact output payload, including arena padding and reusable
   regions;
-- a seeded 128-DAG differential corpus covering all five kernels, arena reuse,
-  audited execution, and raw-bit agreement with the independent interpreter;
+- a seeded 128-DAG differential corpus covering all five algebraic kernels,
+  arena reuse, audited execution, and raw-bit agreement with the independent
+  interpreter;
 - a release allocation probe covering C and C++ allocation entry points, all
-  kernels, regular and audited sessions, zero-work execution, and both the
-  first and repeated `run()` paths;
+  five algebraic kernels plus warm last-axis Softmax, regular and audited
+  sessions, zero-work execution, and both the first and repeated `run()` paths;
 - an audited executable example that prints its verified plan and requires
-  exact agreement with independent reference execution.
+  exact agreement with independent reference execution;
+- a self-verifying public-API Softmax example that exposes the optimized
+  last-axis plan, deterministic non-finite output bits, narrow fixture-level
+  reference agreement, and the typed reference-only non-last-axis boundary;
+- a commit-bound Softmax terminal evidence bundle with the complete raw
+  release transcript, a derived SVG panel, executable and artifact digests,
+  and source commit, tree, and blob provenance.
 
 ### Changed
 
