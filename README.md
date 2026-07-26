@@ -202,6 +202,32 @@ make oracle
 make visuals-check
 ```
 
+## Measured production-source coverage
+
+[![TensorKiln GCC and LCOV production-source coverage](docs/coverage/generated/summary.svg)](docs/coverage/generated/summary.svg)
+
+One clean GCC 13.3/LCOV 2.0 capture runs the same 217-test C++ binary and all
+four checked examples before reporting only executable records under `src/`.
+The current observation is 3433/3943 lines (87.1%), 280/295 functions (94.9%),
+and 2651/5387 GCC branch edges (49.2%) across 26 instrumented production
+files. The branch denominator includes compiler-generated control flow,
+including exception paths; these measurements are not benchmarks, release
+gates, or proxies for semantic correctness.
+
+The [coverage contract](docs/coverage/README.md) documents setup, exact scope,
+the clean capture pipeline, independent trace validation, and interpretation
+limits. The public bundle includes the
+[text summary](docs/coverage/generated/summary.txt),
+[normalized LCOV trace](docs/coverage/generated/coverage.info),
+[complete test transcript](docs/coverage/generated/test-run.txt), and
+[hash manifest](docs/coverage/generated/manifest.json). Rebuild or
+byte-check it with LCOV 2.x installed:
+
+```bash
+make COVERAGE_JOBS=2 coverage
+make COVERAGE_JOBS=2 coverage-check
+```
+
 TensorKiln v0.1.0-alpha.1 is a source-only milestone with an experimental 0.x
 API. It is tested on Ubuntu 24.04 with GCC 14 and Clang 18; no
 installable package or binary distribution is provided. Version tags are the
