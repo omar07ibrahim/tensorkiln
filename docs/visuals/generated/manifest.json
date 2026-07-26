@@ -40,24 +40,24 @@
     "source blobs and captured executable bytes are hashed; the compiler, operating system, and binary supply chain are not attested"
   ],
   "generator": {
-    "bytes": 61111,
-    "commit": "68fffce6c0e46587fc101f785d319fd2248936e8",
+    "bytes": 70417,
+    "commit": "d427469a0ef84eefcfc23c5bbd447b363717fb47",
     "committed": true,
-    "git_blob": "1b943035438d662c8488ccbf5f0669a6147122e5",
+    "git_blob": "9c4f81801826d32a446ffb33eaed2d9a963110ca",
     "path": "tools/render_readme_visuals.py",
-    "sha256": "e77ebacbdcdab6b40c5ddd7ce6a61d98e0e762f5d11eb811ca7e975680475dec",
-    "tree": "c72c90888e8e2f5a8204a4ebb7d0865197940640"
+    "sha256": "ba129fab17d462cc0dc02804235eb4ee9cd9939470c361737a1a239bcb250d70",
+    "tree": "1a64a065d853dcb45ab8ffc3471c2e11683468c6"
   },
   "repository_source": {
-    "commit": "3cb7f3c8ca87f6e0fea6fd3c6dae942fc184ab64",
+    "commit": "47e930acac9f2fce593e3f26b00f10106c7c49c4",
     "object_format": "sha1",
     "selection": "latest commit touching the complete evidence build-input set",
     "source_files": {
       "Makefile": {
-        "bytes": 6587,
-        "git_blob": "65907581e15c1ee648280ba27d4d062d056d888b",
+        "bytes": 7455,
+        "git_blob": "d773a2c6f2d978edb9916b64f29690f51a00853c",
         "mode": "100644",
-        "sha256": "5b77db78de2454cb3aeaca83d89bed130b011e836d9ade957a2b1ec5702123d6"
+        "sha256": "b2605e8486812c3325eec5ed6c41c05dfea785cbd618eb9d76c965662739b31d"
       },
       "examples/execute_graph.cpp": {
         "bytes": 6511,
@@ -354,7 +354,7 @@
         "sha256": "a713c2551805adeb01edf50f5cd0b13be90b7220b75133abe1d331d62f5d41ec"
       }
     },
-    "tree": "e2674cfd49259325cffda2d9e86dd9cdf3862bbd"
+    "tree": "70b474dcc22bd29af57da3073c58cafefaf8a296"
   },
   "reproduce": [
     "make -j2 PROFILE=release visuals",
