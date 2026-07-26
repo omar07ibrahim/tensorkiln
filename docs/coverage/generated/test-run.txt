@@ -1,0 +1,344 @@
+$ make -s -j2 CXX=g++ PROFILE=coverage test
+=== source graph ===
+tensorkiln.graph v0 {
+  #n0 %0 = input @x : f32[2,3]
+  #n1 %1 = constant @bias {elements=3, fnv1a64=0x99e02dab84d74dd8} : f32[3]
+  #n2 %2 = constant @dead_bias {elements=3, fnv1a64=0x2b8a109c11379382} : f32[3]
+  #n3 %3 = add %0, %2 : f32[2,3]
+  #n4 %4 = relu %3 : f32[2,3]
+  #n5 %5 = add %0, %1 : f32[2,3]
+  #n6 %6 = add %0, %1 : f32[2,3]
+  #n7 %7 = relu %5 : f32[2,3]
+  #n8 %8 = relu %6 : f32[2,3]
+  #n9 %9 = relu %8 : f32[2,3]
+  #n10 %10 = add %7, %9 : f32[2,3]
+  #o0 output @result = %10
+  #o1 output @result_alias = %10
+}
+=== dead-code elimination ===
+tensorkiln.dce v0 {
+  nodes {source=11, retained=8, removed=3}
+  constant_elements {source=6, retained=3, removed=3}
+  #n0 %0 <- {source #n0 %0}
+  #n1 %1 <- {source #n1 %1}
+  #n2 %2 <- {source #n5 %5}
+  #n3 %3 <- {source #n6 %6}
+  #n4 %4 <- {source #n7 %7}
+  #n5 %5 <- {source #n8 %8}
+  #n6 %6 <- {source #n9 %9}
+  #n7 %7 <- {source #n10 %10}
+}
+=== structural canonicalization ===
+tensorkiln.structural_canonicalization v0 {
+  nodes {source=8, result=5, merged=3}
+  merges {common_subexpressions=2, redundant_relus=1}
+  guards {preserved_output_distinctions=0}
+  #n0 %0 <- {source #n0 %0}
+  #n1 %1 <- {source #n1 %1}
+  #n2 %2 <- {source #n5 %5, source #n6 %6}
+  #n3 %3 <- {source #n7 %7, source #n8 %8, source #n9 %9}
+  #n4 %4 <- {source #n10 %10}
+}
+=== rewritten graph ===
+tensorkiln.graph v0 {
+  #n0 %0 = input @x : f32[2,3]
+  #n1 %1 = constant @bias {elements=3, fnv1a64=0x99e02dab84d74dd8} : f32[3]
+  #n2 %2 = add %0, %1 : f32[2,3]
+  #n3 %3 = relu %2 : f32[2,3]
+  #n4 %4 = add %3, %3 : f32[2,3]
+  #o0 output @result = %4
+  #o1 output @result_alias = %4
+}
+=== reverse-verified graph arena storage projection ===
+tensorkiln.graph_arena_lowering v0 {
+  source_nodes=5
+  execution_steps=3
+  buffers=3
+  #b0 <- #n2 %2 step=0
+  #b1 <- #n3 %3 step=1
+  #b2 <- #n4 %4 step=2
+}
+tensorkiln.arena_plan v0 {
+  alignment_bytes=64
+  limits {buffers=4096, workspace_bytes=268435456}
+  stats {buffers=3, payload_bytes=72, reserved_bytes=192, peak_live_reserved_bytes=128, workspace_bytes=128}
+  #b0 offset=0 payload=24 reserved=64 live=[0,2)
+  #b1 offset=64 payload=24 reserved=64 live=[1,3)
+  #b2 offset=0 payload=24 reserved=64 live=[2,3)
+}
+verified: non-executable storage projection plans a 128-byte workspace for 192 bytes of aligned reservations
+result = [0, 2, 10, 0, 1, 0]
+verified: bit-exact output and preserved output alias
+=== verified interval arena plan ===
+tensorkiln.arena_plan v0 {
+  alignment_bytes=64
+  limits {buffers=4096, workspace_bytes=268435456}
+  stats {buffers=4, payload_bytes=272, reserved_bytes=384, peak_live_reserved_bytes=192, workspace_bytes=192}
+  #b0 offset=0 payload=96 reserved=128 live=[0,2)
+  #b1 offset=128 payload=64 reserved=64 live=[0,1)
+  #b2 offset=128 payload=32 reserved=64 live=[1,3)
+  #b3 offset=0 payload=80 reserved=128 live=[2,4)
+}
+naive_separate_reservations_bytes=384
+reused_workspace_bytes=192
+verified: two boundary reuses, 192 bytes of workspace for 384 bytes of aligned reservations
+=== verified dense execution plan ===
+tensorkiln.execution_plan v0 {
+  limits {values=4096, steps=4096, outputs=64, constant_bytes=268435456, scalar_steps=1073741824, arena_buffers=4096, arena_workspace_bytes=268435456}
+  stats {values=6, inputs=1, constants=2, steps=3, outputs=1, constant_bytes=32, scalar_steps=20, workspace_bytes=128}
+  values {
+    %0 f32[2,3] dense strides=[3,1] storage=input #i0 name=x
+    %1 f32[3,2] dense strides=[2,1] storage=constant #c0 name=weight fingerprint=6640413917219750661
+    %2 f32[2,2] dense strides=[2,1] storage=arena #b0 offset=0
+    %3 f32[2] dense strides=[1] storage=constant #c1 name=bias fingerprint=5978795021561992053
+    %4 f32[2,2] dense strides=[2,1] storage=arena #b1 offset=64
+    %5 f32[2,2] dense strides=[2,1] storage=arena #b2 offset=0
+  }
+  steps {
+    @0 #n2 %2 = matmul_rank2_f32(%0,%1) work=12
+    @1 #n4 %4 = add_broadcast_f32(%2,%3) work=4
+    @2 #n5 %5 = relu_contiguous_f32(%4) work=4
+  }
+  outputs {
+    #o0 result -> %5
+  }
+  arena {
+    #b0 offset=0 payload=16 reserved=64 live=[0,2)
+    #b1 offset=64 payload=16 reserved=64 live=[1,3)
+    #b2 offset=0 payload=16 reserved=64 live=[2,3)
+  }
+}
+result = [4.5, 11, 0, 11]
+verified: audited execution matches the independent reference bit for bit
+=== verified Softmax execution ===
+scope: deterministic correctness example; not a benchmark
+plan {shape=f32[5,4], axis=1, kernel=softmax_last_axis_f32, scalar_steps=60, workspace_bytes=128, audited=true}
+slice finite_equal bits=[0x3e800000, 0x3e800000, 0x3e800000, 0x3e800000]
+slice nan_precedence bits=[0x7fc00000, 0x7fc00000, 0x7fc00000, 0x7fc00000]
+slice positive_infinity_split bits=[0x3f000000, 0x00000000, 0x3f000000, 0x00000000]
+slice all_negative_infinity bits=[0x7fc00000, 0x7fc00000, 0x7fc00000, 0x7fc00000]
+slice mixed_negative_infinity bits=[0x00000000, 0x3f000000, 0x3f000000, 0x00000000]
+agreement {executor_reference_bits=20/20, executor_fixture_bits=20/20}
+=== optimized axis boundary ===
+reference_axis0 {status=accepted, scalar_steps=80}
+optimized_axis0 {code=plan_operation_unsupported, message=plan backend does not support softmax axis 0 at #n1}
+verified: last-axis execution and reference agree; valid axis 0 remains reference-only
+[pass] Arena planner reuses a deterministic two-slot chain
+[pass] Arena planner repeats non-chronological request schedules exactly
+[pass] Arena planner chooses best fit before the lower offset
+[pass] Arena planner breaks equal-size ties by lower offset
+[pass] Arena planner splits a larger free block on reuse
+[pass] Arena planner coalesces adjacent free blocks
+[pass] Arena planner coalesces free blocks on both sides
+[pass] Arena planner recoalesces a split block
+[pass] Arena planner grows a free block at the workspace frontier
+[pass] Arena planner accepts empty requests under zero limits
+[pass] Arena planner reports its exact deterministic workspace limit
+[pass] Arena planner preserves request validation precedence
+[pass] Arena planning is safe and deterministic across seeded schedules
+[pass] Arena verifier agrees with a seeded pairwise placement oracle
+[pass] Arena planning scales to the exact default buffer boundary
+[pass] Arena planning accepts the maximum half-open step endpoint
+[pass] Arena verifier canonicalizes placements and derives exact statistics
+[pass] Arena verifier accepts the empty zero-limit plan
+[pass] Arena verifier rounds payloads to exact 64-byte reservations
+[pass] Arena verifier permits reuse exactly at a lifetime boundary
+[pass] Arena verifier rejects buffers that are live on the same step
+[pass] Arena verifier accepts adjacent live byte ranges
+[pass] Arena verifier checks predecessor and successor byte overlaps
+[pass] Arena verifier accepts a live allocation in an exact byte gap
+[pass] Arena verifier expires every buffer at a shared boundary
+[pass] Arena verifier permits a valid workspace with leading gaps
+[pass] Arena verifier applies the exact inclusive workspace limit
+[pass] Arena verifier rejects request count before request contents
+[pass] Arena verifier rejects zero payload before a bad lifetime
+[pass] Arena verifier rejects an empty or reversed lifetime
+[pass] Arena verifier rejects reservation and aggregate size overflow
+[pass] Arena verifier rejects a placement count mismatch first
+[pass] Arena verifier rejects unknown duplicate and unaligned placements
+[pass] Arena verifier rejects an overflowing placed byte range
+[pass] Arena verifier reports overlap before workspace policy failure
+[pass] Arena verifier reports stable public error names
+[pass] Aligned execution workspace owns exact logical bytes and guards
+[pass] Aligned execution workspace detects both outer guard faults
+[pass] Zero-byte execution workspace performs no physical allocation
+[pass] DCE removes interleaved dead work without changing the feed or output ABI
+[pass] DCE is bitwise reference equivalent while removing dead resource work
+[pass] DCE copies live constant bits and fingerprints without canonicalization
+[pass] DCE provenance uses complete owner-tagged handles in both directions
+[pass] DCE reuses exact non-default graph shape tensor and name limits
+[pass] DCE is idempotent and composes lineage back to the original graph
+[pass] DCE is deterministic and bit-exact across seeded scalar DAGs
+[pass] DCE rejects incomplete and foreign provenance with stable diagnostics
+[pass] DCE replays live Softmax axes and removes dead Softmax work
+[pass] Execution session matches the independent reference pipeline
+[pass] Execution binding diagnostics preserve fail-closed precedence
+[pass] External outputs alias borrowed inputs and plan-owned constants
+[pass] Result views become safely stale after session destruction
+[pass] Execution rejects exact and partial aliases into its own arena
+[pass] Repeated bindings invalidate stale views and do not leak arena state
+[pass] A successful binding remains active across repeated runs
+[pass] Batched broadcast MatMul is bit-exact with the reference
+[pass] MatMul rounds every reduction step to binary64 on all targets
+[pass] ReLU execution preserves NaN bits and maps signed zero to positive
+[pass] Last-axis Softmax applies its edge policy on repeated audited runs
+[pass] Softmax write auditing rejects a write outside its output
+[pass] Optional kernel write audit rejects an in-arena stray write
+[pass] Execution reports unsupported rounding mode without committing
+[pass] Execution rejects a desynchronized SSE rounding mode
+[pass] Execution is differential and replayable across seeded dense DAGs
+[pass] Last-axis Softmax is differential normalized and translation invariant
+[pass] Graph IDs are dense stable and topological
+[pass] Verified graph retains its exact construction limits
+[pass] Failed Add is fully transactional
+[pass] Failed constant does not reserve its name or ID
+[pass] Graph rejects values owned by another builder
+[pass] Definition names use a narrow deterministic grammar
+[pass] Constant owns caller data and distinguishes signed zero
+[pass] Add and Relu infer their output types
+[pass] Matmul infers a broadcast batch type
+[pass] Softmax canonicalizes valid axes across rank boundaries
+[pass] Softmax axis failures are typed transactional and owner-safe
+[pass] Output labels are unique but may alias definitions
+[pass] Graph node limit is exact and transactional
+[pass] Zero graph node limit rejects the first definition
+[pass] Graph output limit is exact and transactional
+[pass] Zero graph output limit rejects the first label
+[pass] Aggregate constant limit spans every constant
+[pass] Input types obey graph element and byte limits
+[pass] Derived types obey graph shape limits transactionally
+[pass] Canonical dump is deterministic and graph-owned
+[pass] Graph lookups reject foreign owner-tagged IDs
+[pass] Finalization requires an output and consumes on success
+[pass] Execution plan compiler seals dense layouts storage and kernels
+[pass] Execution plan dump is stable across calls and compilations
+[pass] Execution plan owns its graph and survives moves
+[pass] Execution plan accepts external-only graphs at exact zero work limits
+[pass] Execution plan classifies contiguous add and batched matmul
+[pass] Execution plan selects only canonical last-axis Softmax
+[pass] Execution plan represents a scalar with an empty dense stride list
+[pass] Execution plan verifier accepts an independently supplied candidate
+[pass] Execution plan verifier rejects missing and extra step specs
+[pass] Execution plan verifier rejects reordered or foreign step sources
+[pass] Execution plan verifier rejects invalid and incompatible kernels
+[pass] Execution plan verifier delegates placement proof to arena verifier
+[pass] Execution plan verifier enforces exact and one-below policy limits
+[pass] Oversized plan work fails before materialization
+[pass] Execution plan verifier accepts an external-only empty candidate
+[pass] Execution plans reject valid non-last Softmax with a typed error
+[pass] Execution plan verifier reconstructs Softmax kernel work and limits
+[pass] Verified consecutive Softmax steps cannot overlap in place
+[pass] Execution plan diagnostics expose stable typed names
+[pass] Graph arena verification accepts an external-only graph
+[pass] Graph arena lowering accepts an external-only graph at zero limits
+[pass] Graph arena verification derives a canonical two-slot chain
+[pass] Graph arena lowering plans a canonical chain deterministically
+[pass] Graph arena verification retains outputs and includes dead compute
+[pass] Graph arena verification keeps a value through its last fanout use
+[pass] Graph arena verification compacts MatMul steps around constants
+[pass] Graph arena lowering compacts constants and preserves MatMul fanout
+[pass] Graph arena lowering preserves exact arena limits
+[pass] Graph arena lowering reflects explicit DCE pass ordering
+[pass] Graph arena lowering agreement rejects altered forward evidence
+[pass] Graph arena verification preserves arena diagnostic precedence
+[pass] Graph arena results own mappings and reject foreign handles
+[pass] Graph arena lowering materializes Softmax results across axes
+[pass] Graph arena lowering agrees with a seeded brute-force DAG oracle
+[pass] Graph arena lowering covers heterogeneous MatMul payload boundaries
+[pass] Graph arena lowering covers rank-four batched MatMul lifetimes
+[pass] Graph arena lowering accepts the exact default buffer boundary
+[pass] Graph arena lowering rejects then accepts one beyond the default
+[pass] Reference binding diagnostics have phase-stable precedence
+[pass] Reference results own feeds and reject foreign value IDs
+[pass] Reference Add broadcasts trailing axes in both operand orders
+[pass] Reference Add right-aligns operands with different ranks
+[pass] Reference Add executes scalars and broadcasts them to tensors
+[pass] Reference MatMul broadcasts independent rank-four batches
+[pass] Reference MatMul right-aligns unequal batch ranks
+[pass] Reference MatMul keeps products and accumulation in double
+[pass] Reference ReLU defines NaN infinity and signed-zero behavior
+[pass] Reference Softmax matches the independent non-last-axis fixture
+[pass] Reference Softmax traverses every rank-three axis canonically
+[pass] Reference Softmax applies deterministic non-finite precedence
+[pass] Reference limits accept exact payload and scalar-step boundaries
+[pass] Reference interpreter rejects rounding without changing its mode
+[pass] Reference MLP matches every independent oracle boundary
+[pass] Provenance factory canonicalizes sources and supports full lookups
+[pass] Provenance factory rejects a result-entry count mismatch
+[pass] Provenance factory rejects an empty source set
+[pass] Provenance factory rejects a foreign source owner
+[pass] Provenance factory rejects one source assigned to two results
+[pass] Provenance composition expands canonical roots and rejects wrong owner
+[pass] Provenance composition scales across a large canonical root set
+[pass] Provenance owns handles after source and result graph destruction
+[pass] Result stores a successful value
+[pass] Result preserves a typed diagnostic
+[pass] Result accepts a move-only payload
+[pass] Error codes have stable names
+[pass] A rank-zero shape is a scalar
+[pass] Shape preserves dimensions and computes element count
+[pass] Rank four is accepted at the boundary
+[pass] Rank five is rejected before extent validation
+[pass] Zero extent reports its axis
+[pass] Negative extent reports its value
+[pass] All extents are validated before multiplication
+[pass] Element limit accepts the exact boundary
+[pass] Element limit rejects one beyond the boundary
+[pass] Scalar still consumes one element of the limit
+[pass] Element arithmetic overflow precedes the resource limit
+[pass] Shape equality is structural
+[pass] Small shapes satisfy exhaustive boundary properties
+[pass] Broadcast preserves equal shapes
+[pass] Scalar broadcasts across every axis
+[pass] Two scalars broadcast to a scalar
+[pass] Trailing broadcast expands singleton dimensions
+[pass] Incompatible broadcast identifies the output axis
+[pass] Broadcast reports the rightmost incompatible output axis
+[pass] Broadcast semantic failure precedes a zero element limit
+[pass] Broadcast element overflow precedes its element limit
+[pass] Broadcast output obeys the element ceiling
+[pass] Rank-two matmul infers matrix dimensions
+[pass] Batched matmul broadcasts both batch prefixes
+[pass] Matrix broadcasts across a rank-four batch
+[pass] Matmul supports every rank pairing from two through four
+[pass] Matmul rejects a rank-one left operand
+[pass] Matmul rejects a rank-zero right operand
+[pass] Matmul checks the left rank before the right rank
+[pass] Matmul reports its K mismatch before batch mismatch
+[pass] Matmul K mismatch precedes a zero element limit
+[pass] Matmul rejects incompatible batch prefixes
+[pass] Matmul reports the rightmost incompatible batch output axis
+[pass] Matmul batch mismatch precedes a zero element limit
+[pass] Matmul element overflow precedes its element limit
+[pass] Matmul output obeys the element ceiling
+[pass] Structural canonicalization merges exact Add subexpressions with stable provenance
+[pass] Structural canonicalization merges exact MatMul and ReLU nodes bitwise
+[pass] Structural canonicalization removes redundant ReLU across IEEE edge values
+[pass] Structural canonicalization preserves exact output alias classes
+[pass] Structural canonicalization protects distinct nested ReLU outputs
+[pass] Structural canonicalization chooses the first output-compatible candidate
+[pass] Structural canonicalization keys Softmax by canonical axis
+[pass] Structural canonicalization preserves operand order and operation kind
+[pass] Structural canonicalization keeps Inputs and raw Constants distinct
+[pass] Structural canonicalization never removes unique dead work
+[pass] Structural canonicalization refuses algebraic and floating rewrites
+[pass] Structural canonicalization preserves exact custom graph limits
+[pass] DCE and structural canonicalization compose lineage to root definitions
+[pass] Structural canonicalization is deterministic and graph-idempotent
+[pass] Output-protected canonical graphs remain stable on a second pass
+[pass] Structural canonicalization rejects incomplete and foreign provenance
+[pass] Structural canonicalization is differential across seeded scalar DAGs
+[pass] Structural canonicalization is differential across seeded matrix DAGs
+[pass] Structural canonicalization preserves rank-four broadcasted matrix DAGs
+[pass] Structural canonicalization scales across merged sets and many keys
+[pass] Structural canonicalization scales across protected equivalence classes
+[pass] Scalar f32 type occupies four bytes
+[pass] Tensor byte count follows the shape
+[pass] Byte limit accepts the exact boundary
+[pass] Byte limit rejects one byte below the boundary
+[pass] Byte overflow precedes the byte resource limit
+[pass] Invalid element enum is rejected
+[pass] Tensor type equality is structural
+[pass] Small tensor types satisfy byte-limit boundaries
+
+217/217 tests passed

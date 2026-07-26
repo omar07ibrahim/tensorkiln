@@ -54,6 +54,12 @@ EXAMPLE_BINARIES := $(patsubst examples/%.cpp,$(BUILD_DIR)/%,\
 NOALLOC_BINARY := $(BUILD_DIR)/execution_noalloc
 VISUALS_TEST := tests/test_readme_visuals.py
 VISUALS_TOOL := tools/render_readme_visuals.py
+COVERAGE_TEST := tests/test_coverage_evidence.py
+COVERAGE_TOOL := tools/record_coverage.py
+COVERAGE_JOBS ?= 2
+LCOV ?= lcov
+GENINFO ?= geninfo
+GCOV ?= gcov
 NOALLOC_WRAP_LDFLAGS := -Wl,--wrap=malloc -Wl,--wrap=calloc \
                          -Wl,--wrap=realloc -Wl,--wrap=aligned_alloc \
                          -Wl,--wrap=posix_memalign
@@ -83,14 +89,19 @@ else ifeq ($(PROFILE),sanitize)
   PROFILE_CXXFLAGS := -O1 -g3 -D_GLIBCXX_ASSERTIONS -fno-omit-frame-pointer \
                       -fsanitize=address,undefined -fno-sanitize-recover=all
   PROFILE_LDFLAGS := -fsanitize=address,undefined -fno-sanitize-recover=all
+else ifeq ($(PROFILE),coverage)
+  PROFILE_CXXFLAGS := -O0 -g3 -D_GLIBCXX_ASSERTIONS -fno-omit-frame-pointer \
+                      --coverage
+  PROFILE_LDFLAGS := --coverage
 else
-  $(error unsupported PROFILE '$(PROFILE)'; use debug, release, or sanitize)
+  $(error unsupported PROFILE '$(PROFILE)'; use debug, release, sanitize, or coverage)
 endif
 
 ARFLAGS := rcsD
 
 .PHONY: all test noalloc check sanitize oracle example run-examples visuals \
-        visuals-check visuals-generate visuals-verify clean help
+        visuals-check visuals-generate visuals-verify coverage \
+        coverage-check clean help
 
 all: $(LIBRARY) $(EXAMPLE_BINARIES)
 
@@ -99,6 +110,7 @@ test: $(TEST_BINARY) run-examples $(TEST_AUDIT_BINARY)
 ifeq ($(PROFILE),release)
 	$(NOALLOC_BINARY)
 	python3 -B -I $(VISUALS_TEST)
+	python3 -B -I $(COVERAGE_TEST)
 	python3 -B -I $(VISUALS_TOOL) --build-dir $(BUILD_DIR) --check
 endif
 
@@ -140,6 +152,17 @@ visuals-verify: $(EXAMPLE_BINARIES)
 	python3 -B -I $(VISUALS_TEST)
 	python3 -B -I $(VISUALS_TOOL) --build-dir $(BUILD_DIR) --check
 
+coverage:
+	python3 -B -I $(COVERAGE_TOOL) \
+		--cxx "$(CXX)" --gcov "$(GCOV)" --lcov "$(LCOV)" \
+		--geninfo "$(GENINFO)" --jobs "$(COVERAGE_JOBS)"
+
+coverage-check:
+	python3 -B -I $(COVERAGE_TEST)
+	python3 -B -I $(COVERAGE_TOOL) \
+		--cxx "$(CXX)" --gcov "$(GCOV)" --lcov "$(LCOV)" \
+		--geninfo "$(GENINFO)" --jobs "$(COVERAGE_JOBS)" --check
+
 $(LIBRARY): $(LIB_OBJECTS)
 	@mkdir -p $(dir $@)
 	$(AR) $(ARFLAGS) $@ $^
@@ -166,8 +189,9 @@ clean:
 	rm -rf build
 
 help:
-	@echo 'Targets: all test noalloc check sanitize oracle example visuals visuals-check clean help'
-	@echo 'Profiles: debug (default), release, sanitize'
+	@echo 'Targets: all test noalloc check sanitize oracle example visuals visuals-check coverage coverage-check clean help'
+	@echo 'Profiles: debug (default), release, sanitize, coverage'
 	@echo 'Example: make -j2 CXX=g++ PROFILE=release test'
+	@echo 'Coverage: make COVERAGE_JOBS=2 coverage (requires GCC, gcov, and LCOV 2.x)'
 
 -include $(DEPENDENCIES)
