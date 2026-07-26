@@ -517,9 +517,18 @@ class CommittedEvidenceTests(unittest.TestCase):
             manifest["schema"], "tensorkiln.coverage-evidence.v1"
         )
         self.assertEqual(manifest["trace"]["scope"], "src/")
-        self.assertEqual(
-            manifest["source_snapshot"], coverage.collect_source_snapshot()
-        )
+        recorded_snapshot = dict(manifest["source_snapshot"])
+        current_snapshot = coverage.collect_source_snapshot()
+        # A depth-one refs/pull/*/merge checkout cannot traverse to the
+        # recorded source commit. Direct input identities remain exact.
+        for snapshot in (recorded_snapshot, current_snapshot):
+            for field in ("source_commit", "source_tree"):
+                history_id = snapshot.pop(field)
+                self.assertIs(type(history_id), str)
+                self.assertIsNotNone(
+                    re.fullmatch(r"[0-9a-f]{40,64}", history_id)
+                )
+        self.assertEqual(recorded_snapshot, current_snapshot)
         self.assertEqual(
             set(path.name for path in output_dir.iterdir()),
             set(coverage.ARTIFACT_NAMES),
