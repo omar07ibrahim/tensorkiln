@@ -6,7 +6,7 @@
     },
     "summary.svg": {
       "bytes": 11385,
-      "sha256": "6f65c69cdbfa712efeff4d0c7a3a4ca7a1cfc333b0b11f3ce7db75a84e3499ac"
+      "sha256": "74cec308eba9d85726059670369c57c78d20dec6d7a75b0e982edf47889c2d78"
     },
     "summary.txt": {
       "bytes": 1260,
@@ -366,9 +366,9 @@
         "sha256": "537ae25a8c6fae7fdcc80a6fe759cdfb878fd4c085e939b012a5ad88dedf0c92"
       },
       "tests/test_coverage_evidence.py": {
-        "bytes": 23236,
-        "git_blob": "6e347811a3d51992144634d387a1ec25546b0dbb",
-        "sha256": "4bd16f33ee785cf33fc15ad0595c55e71817ddaa3bd27cf4438f3d8aa24c3a0e"
+        "bytes": 23799,
+        "git_blob": "fc208e533b952f45ff21a33946864f7dbb787f41",
+        "sha256": "df4bed82493beddcceec41a3b643433028df2600fafcf15acb0a096b61945c82"
       },
       "tests/test_dead_code_elimination.cpp": {
         "bytes": 26261,
@@ -476,12 +476,12 @@
         "sha256": "127a093b7f08761d5e57000c1705415f9e6f0b906b84a366633edfa04db6ba38"
       }
     },
-    "input_bytes": 812146,
+    "input_bytes": 812709,
     "selected_paths_clean": true,
     "selection": "latest commit touching the direct evidence-input set",
-    "sha256": "4bd1e835dccad38d503e30b6414463cdb43bd168e2e1a282245bcc93c5240cc1",
-    "source_commit": "47e930acac9f2fce593e3f26b00f10106c7c49c4",
-    "source_tree": "70b474dcc22bd29af57da3073c58cafefaf8a296"
+    "sha256": "acff0febaed9b1840243fd6227f860dc478d3bde567d19d36459fec29d5d11af",
+    "source_commit": "2ec1c1bdcf81f6ae1245b39436abbd530823a442",
+    "source_tree": "ec31bd84fdc9d4f20169a4606201f3c76d677139"
   },
   "tools": {
     "cxx": {
