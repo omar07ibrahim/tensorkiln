@@ -1,11 +1,11 @@
 TensorKiln production coverage evidence
 
 scope: executable line, function, and GCC branch-edge records under src/
-run: 217/217 C++ tests and 4/4 checked examples passed
-lines: 87.1% (3433/3943)
-functions: 94.9% (280/295)
-branches: 49.2% (2651/5387)
-instrumented files: 26
+run: 229/229 C++ tests and 4/4 checked examples passed
+lines: 87.0% (3701/4254)
+functions: 95.1% (312/328)
+branches: 49.3% (2875/5833)
+instrumented files: 27
 compiler: g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
 lcov: LCOV 2.0-1
 
@@ -14,12 +14,12 @@ largest uncovered-line sets:
   src/arena_planner.cpp: 49 uncovered, 74.3% (142/191)
   src/diagnostic.cpp: 49 uncovered, 58.1% (68/117)
   src/execution_plan_support.cpp: 45 uncovered, 75.7% (140/185)
+  src/cli_app.cpp: 43 uncovered, 86.2% (268/311)
   src/execution_plan_verifier.cpp: 43 uncovered, 80.7% (180/223)
   src/dead_code_elimination.cpp: 37 uncovered, 77.2% (125/162)
   src/graph_arena_lowering.cpp: 35 uncovered, 81.1% (150/185)
   src/compiler_support.cpp: 34 uncovered, 74.4% (99/133)
   src/execution.cpp: 30 uncovered, 90.3% (278/308)
-  src/graph.cpp: 26 uncovered, 92.6% (323/349)
 
 claim boundary:
   one clean deterministic instrumentation run; not a benchmark

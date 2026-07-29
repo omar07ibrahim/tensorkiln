@@ -12,6 +12,9 @@ in progress.
 
 ### Added
 
+- a bounded `tensorkiln` CLI that constructs a versioned dense workload through
+  the public graph and plan APIs, then emits deterministic text or
+  machine-readable plan inspection with typed, bounded error handling;
 - axis-aware `Softmax` graph and independent reference semantics for every
   valid rank 1-4 axis, including canonical negative axes, subtract-maximum
   evaluation, explicit NaN/infinity behavior, exact work accounting, rewrite

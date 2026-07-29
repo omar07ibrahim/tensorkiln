@@ -49,15 +49,15 @@
     "tree": "1a64a065d853dcb45ab8ffc3471c2e11683468c6"
   },
   "repository_source": {
-    "commit": "47e930acac9f2fce593e3f26b00f10106c7c49c4",
+    "commit": "9e6af465e73fef46d72f52bf25d0ad7cc89c0275",
     "object_format": "sha1",
     "selection": "latest commit touching the complete evidence build-input set",
     "source_files": {
       "Makefile": {
-        "bytes": 7455,
-        "git_blob": "d773a2c6f2d978edb9916b64f29690f51a00853c",
+        "bytes": 8400,
+        "git_blob": "8840994fd591da8be74f198d0edda02881195be8",
         "mode": "100644",
-        "sha256": "b2605e8486812c3325eec5ed6c41c05dfea785cbd618eb9d76c965662739b31d"
+        "sha256": "e801463914ea9d6e1bc088d2c307913a26c548a08c0a0a03591beee504cf7cfb"
       },
       "examples/execute_graph.cpp": {
         "bytes": 6511,
@@ -202,6 +202,18 @@
         "git_blob": "bef1472afafc5eed9cab2c1a7519048226b16a12",
         "mode": "100644",
         "sha256": "ad8183d4f7af60e7b4fdf85b523fb59515109019efdcd5a99a847102449bd373"
+      },
+      "src/cli_app.cpp": {
+        "bytes": 17364,
+        "git_blob": "a7e232d3b2afe0a701be688fbba86e74b483c2ac",
+        "mode": "100644",
+        "sha256": "0bd96dc2986efb1df515b448e97f1f19dc2109aab5886c778726753edc1cb17e"
+      },
+      "src/cli_app.hpp": {
+        "bytes": 641,
+        "git_blob": "a30867c7415f1c8686375f9bc429d0012f2966bc",
+        "mode": "100644",
+        "sha256": "ab78cd597748b057694bb138caf56809b4df84ed89f90d0bef393a27f878bea8"
       },
       "src/compiler_support.cpp": {
         "bytes": 8055,
@@ -354,7 +366,7 @@
         "sha256": "a713c2551805adeb01edf50f5cd0b13be90b7220b75133abe1d331d62f5d41ec"
       }
     },
-    "tree": "70b474dcc22bd29af57da3073c58cafefaf8a296"
+    "tree": "fbba6a935e0628904925853be818496d76d4f947"
   },
   "reproduce": [
     "make -j2 PROFILE=release visuals",
@@ -366,20 +378,20 @@
     "execute_graph": {
       "binary": "execute_graph",
       "binary_bytes": 669408,
-      "binary_sha256": "0c166538bdf1e1399bf01d763f0a01981c4db62074ed4a67c05c97788eb9f0d9",
+      "binary_sha256": "49a6fca05af37d44ec6e5fae4a726e386a79d3908f77a24e18b85d19bf90b776",
       "stdout_sha256": "831194f4d7019e85ba32c7e2355dfc49b4caa3f4b1ae7b9db47b75bdae85a2e4"
     },
     "execute_softmax": {
       "binary": "execute_softmax",
       "binary_bytes": 670056,
-      "binary_sha256": "fb2da32126cfb362e432e0c501c14e480104ee2d3963633a94fa77eab286d9db",
+      "binary_sha256": "43c32bc1559d232fb981792aea222c325d139c225cf33a9f13d2da54d7bca341",
       "fixture": "crafted f32[5,4] policy slices",
       "stdout_sha256": "a8fde11bd37ec79801fd9c7d8f370501b2d4197dbd5816ff6f461c7469ae5898"
     },
     "plan_arena": {
       "binary": "plan_arena",
       "binary_bytes": 148360,
-      "binary_sha256": "1f5c9d925e20bb3061b5505a041bb273af137d5d4745371973fd00b1730b00d9",
+      "binary_sha256": "406f5b23e7bfb0770e347b901d25ab026899c5fddedd7d7244a1bca8706a76e5",
       "stdout_sha256": "5cda0ab2cc42372c6991c2387aca6635212b35d7dbb2391d0af7895f2af1c0bb"
     }
   }

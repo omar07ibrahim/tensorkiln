@@ -1,26 +1,26 @@
 {
   "artifacts": {
     "coverage.info": {
-      "bytes": 187825,
-      "sha256": "3e57c37edf19c30d02a2cb20c192cfa9529115d82e64718cf3d79c82af563cb4"
+      "bytes": 204527,
+      "sha256": "ceb702d9f58fdfbdde331ea028fc8ca883a6c86964f5419363ef1be2dcd7ab1b"
     },
     "summary.svg": {
-      "bytes": 11385,
-      "sha256": "74cec308eba9d85726059670369c57c78d20dec6d7a75b0e982edf47889c2d78"
+      "bytes": 11387,
+      "sha256": "c810bf076da66f96b9e136a5a2d3de353e5157283915aea0ac44c3a67acc1916"
     },
     "summary.txt": {
-      "bytes": 1260,
-      "sha256": "54636069020883c2b4690810d11359b1a8a3c4334e04eadb83372cdf97d65c65"
+      "bytes": 1262,
+      "sha256": "68da3583671d124c2cb9c8b6410ce8e7477d7926d6f230df461895fe0891716f"
     },
     "test-run.txt": {
-      "bytes": 19067,
-      "sha256": "3cf2341df095af8da04689ed06c289a12a491378e39883dffbe61fb48a8f1e62"
+      "bytes": 19838,
+      "sha256": "851546347320aad433e7a976b03dd796c2a6ab921b2333bfcdc73140991b81d0"
     }
   },
   "capture": {
     "checked_examples_passed": 4,
     "command": "make -s -j2 CXX=g++ PROFILE=coverage test",
-    "counter_pairs": 51,
+    "counter_pairs": 54,
     "counter_reset": "dedicated build directory removed before run",
     "environment": {
       "LANG": "C",
@@ -31,9 +31,9 @@
     },
     "jobs": 2,
     "network_isolation": "not enforced",
-    "production_translation_units": 24,
+    "production_translation_units": 25,
     "stderr": "empty for the build and test command",
-    "test_cases_passed": 217
+    "test_cases_passed": 229
   },
   "claim_boundary": [
     "one deterministic instrumentation run; not a benchmark",
@@ -46,20 +46,20 @@
   ],
   "metrics": {
     "branches": {
-      "covered": 2651,
-      "percentage": 49.2,
-      "total": 5387
+      "covered": 2875,
+      "percentage": 49.3,
+      "total": 5833
     },
     "functions": {
-      "covered": 280,
-      "percentage": 94.9,
-      "total": 295
+      "covered": 312,
+      "percentage": 95.1,
+      "total": 328
     },
-    "instrumented_files": 26,
+    "instrumented_files": 27,
     "lines": {
-      "covered": 3433,
-      "percentage": 87.1,
-      "total": 3943
+      "covered": 3701,
+      "percentage": 87.0,
+      "total": 4254
     }
   },
   "reproduce": [
@@ -71,9 +71,14 @@
     "commit_bound": true,
     "files": {
       "Makefile": {
-        "bytes": 7455,
-        "git_blob": "d773a2c6f2d978edb9916b64f29690f51a00853c",
-        "sha256": "b2605e8486812c3325eec5ed6c41c05dfea785cbd618eb9d76c965662739b31d"
+        "bytes": 8400,
+        "git_blob": "8840994fd591da8be74f198d0edda02881195be8",
+        "sha256": "e801463914ea9d6e1bc088d2c307913a26c548a08c0a0a03591beee504cf7cfb"
+      },
+      "cli/tensorkiln.cpp": {
+        "bytes": 823,
+        "git_blob": "3445d88823749f4731dbb74adf9d5d2a5f3dca6c",
+        "sha256": "59bb5bf7a51295f4d3dfd531b45a27e1963b4da9bb57e13a80fd50a42e154dd8"
       },
       "examples/execute_graph.cpp": {
         "bytes": 6511,
@@ -199,6 +204,16 @@
         "bytes": 11143,
         "git_blob": "bef1472afafc5eed9cab2c1a7519048226b16a12",
         "sha256": "ad8183d4f7af60e7b4fdf85b523fb59515109019efdcd5a99a847102449bd373"
+      },
+      "src/cli_app.cpp": {
+        "bytes": 17364,
+        "git_blob": "a7e232d3b2afe0a701be688fbba86e74b483c2ac",
+        "sha256": "0bd96dc2986efb1df515b448e97f1f19dc2109aab5886c778726753edc1cb17e"
+      },
+      "src/cli_app.hpp": {
+        "bytes": 641,
+        "git_blob": "a30867c7415f1c8686375f9bc429d0012f2966bc",
+        "sha256": "ab78cd597748b057694bb138caf56809b4df84ed89f90d0bef393a27f878bea8"
       },
       "src/compiler_support.cpp": {
         "bytes": 8055,
@@ -365,10 +380,20 @@
         "git_blob": "68a1505dc9b55809b8a400dc81b6d9781a38afda",
         "sha256": "537ae25a8c6fae7fdcc80a6fe759cdfb878fd4c085e939b012a5ad88dedf0c92"
       },
+      "tests/test_cli_app.cpp": {
+        "bytes": 11036,
+        "git_blob": "92c672edddc891808dda3ce74e91bc80818a1f12",
+        "sha256": "161ce4e66b42a8c4c7ae85dc26588c62e3d6373042660dea23b340e426ba12c4"
+      },
+      "tests/test_cli_integration.py": {
+        "bytes": 6124,
+        "git_blob": "fbe4190d587c3b155098f5c7e5433668f4d8c378",
+        "sha256": "58d58e2815f084b649afbc5ab3e96069568eb1c3849646fd1e3c20a820666ed2"
+      },
       "tests/test_coverage_evidence.py": {
-        "bytes": 23799,
-        "git_blob": "fc208e533b952f45ff21a33946864f7dbb787f41",
-        "sha256": "df4bed82493beddcceec41a3b643433028df2600fafcf15acb0a096b61945c82"
+        "bytes": 23935,
+        "git_blob": "3aa1eb4ccc60b9f7c2a6b30a66d4552ade44f098",
+        "sha256": "85fb145a88e1ef1b4699134cd432f453e4e6c5003e058238cb109af70fc8bdd4"
       },
       "tests/test_dead_code_elimination.cpp": {
         "bytes": 26261,
@@ -471,17 +496,17 @@
         "sha256": "aee1cbe2ab754cf3bb61da19cc8574bc9bc06e24895b30c602995973c6cf8949"
       },
       "tools/record_coverage.py": {
-        "bytes": 60664,
-        "git_blob": "a79a396d06a7f0633dd7625b7654f78af1015bf6",
-        "sha256": "127a093b7f08761d5e57000c1705415f9e6f0b906b84a366633edfa04db6ba38"
+        "bytes": 60671,
+        "git_blob": "24540f0d950fda25d926988f48fb767315e77bbd",
+        "sha256": "544fac254945e826eefc7f691c8a9e3efe895fdb1e126c3cf6b434c950d4c0d7"
       }
     },
-    "input_bytes": 812709,
+    "input_bytes": 849785,
     "selected_paths_clean": true,
     "selection": "latest commit touching the direct evidence-input set",
-    "sha256": "acff0febaed9b1840243fd6227f860dc478d3bde567d19d36459fec29d5d11af",
-    "source_commit": "2ec1c1bdcf81f6ae1245b39436abbd530823a442",
-    "source_tree": "ec31bd84fdc9d4f20169a4606201f3c76d677139"
+    "sha256": "841a71e8115d6a6a5cdf8daffe415f4db51de823a3c32aa570a5be406c3a8feb",
+    "source_commit": "27e6c948e87df0cf378a4b5bb62b4366de197f9a",
+    "source_tree": "31232f684f1034753ded4f13816c7124db7cae82"
   },
   "tools": {
     "cxx": {

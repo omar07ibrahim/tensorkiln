@@ -18,6 +18,8 @@ reference interpreter.
 > independent Python and C++ reference paths, explicit dead-code elimination
 > and structural canonicalization, reverse-verified arena planning, six dense
 > row-major kernel kinds, and a synchronous allocation-free session run path.
+> A bounded command-line inspector builds one versioned workload through the
+> same public graph and plan APIs and emits deterministic text or JSON.
 > Axis-aware `Softmax` is available throughout the graph and reference layers;
 > the optimized plan supports only its canonical last axis, while other valid
 > axes remain reference-only.
@@ -67,6 +69,26 @@ make -j2 visuals
 make visuals-check
 ```
 
+## Inspect a compiled workload
+
+Build the dependency-free CLI and inspect its compiled-in dense workload:
+
+```bash
+make -j2 PROFILE=release cli
+build/g++/release/tensorkiln list --format=json
+build/g++/release/tensorkiln inspect \
+  --workload dense_relu_v1 \
+  --format=json
+```
+
+The report is produced from a real `GraphBuilder -> ExecutionPlanCompiler`
+path. It includes the input/output contract, exact plan statistics, selected
+kernel sequence, and canonical verified-plan dump under the versioned
+`tensorkiln.cli.inspect.v1` schema. The workload catalog is intentionally
+compiled in: this is not a graph-dump parser, general model runner, or model
+file importer. The complete command, schema, error, and resource contracts are
+documented in [the CLI contract](docs/cli.md).
+
 ## Why this exists
 
 Tensor runtimes often hide graph semantics, allocation policy, and numerical
@@ -111,6 +133,9 @@ TensorKiln is not an ONNX importer and does not claim ONNX conformance.
 The current vertical slice is small but runnable and inspectable:
 
 - checked scalar and rank 1-4 tensor types with explicit element/byte ceilings;
+- a bounded `tensorkiln` plan-inspection CLI with stable text/JSON output,
+  typed errors, fixed exit codes, argument ceilings, and process-level replay
+  tests;
 - trailing multidirectional broadcasting and rank 2-4 batched `MatMul`
   inference;
 - a transactional `GraphBuilder` for `Input`, `Constant`, `Add`, `MatMul`,
@@ -206,10 +231,10 @@ make visuals-check
 
 [![TensorKiln GCC and LCOV production-source coverage](docs/coverage/generated/summary.svg)](docs/coverage/generated/summary.svg)
 
-One clean GCC 13.3/LCOV 2.0 capture runs the same 217-test C++ binary and all
+One clean GCC 13.3/LCOV 2.0 capture runs the same 229-test C++ binary and all
 four checked examples before reporting only executable records under `src/`.
-The current observation is 3433/3943 lines (87.1%), 280/295 functions (94.9%),
-and 2651/5387 GCC branch edges (49.2%) across 26 instrumented production
+The current observation is 3701/4254 lines (87.0%), 312/328 functions (95.1%),
+and 2875/5833 GCC branch edges (49.3%) across 27 instrumented production
 files. The branch denominator includes compiler-generated control flow,
 including exception paths; these measurements are not benchmarks, release
 gates, or proxies for semantic correctness.
