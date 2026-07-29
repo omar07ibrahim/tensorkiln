@@ -299,6 +299,7 @@ class SourceSnapshotTests(unittest.TestCase):
         ) as raw:
             root = Path(raw) / "repository"
             for directory in (
+                "cli",
                 "examples",
                 "include",
                 "src",
