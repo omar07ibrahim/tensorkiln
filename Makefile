@@ -29,6 +29,7 @@ TEST_SOURCES := tests/test_arena_planner.cpp tests/test_arena_seeded.cpp \
                 tests/test_execution_plan_verifier.cpp \
                 tests/test_graph_arena.cpp \
                 tests/test_graph_arena_seeded.cpp \
+                tests/test_cli_app.cpp \
                 tests/test_main.cpp tests/test_reference.cpp \
                 tests/test_provenance.cpp tests/test_result.cpp \
                 tests/test_shape.cpp tests/test_shape_inference.cpp \
@@ -38,20 +39,27 @@ TEST_SOURCES := tests/test_arena_planner.cpp tests/test_arena_seeded.cpp \
                 tests/test_tensor_type.cpp
 EXAMPLE_SOURCES := examples/inspect_graph.cpp examples/plan_arena.cpp \
                    examples/execute_graph.cpp examples/execute_softmax.cpp
+CLI_MAIN_SOURCE := cli/tensorkiln.cpp
+CLI_SUPPORT_SOURCE := src/cli_app.cpp
 NOALLOC_SOURCE := tests/execution_noalloc_main.cpp
 
 LIB_OBJECTS := $(patsubst %.cpp,$(BUILD_DIR)/%.o,$(LIB_SOURCES))
 TEST_OBJECTS := $(patsubst %.cpp,$(BUILD_DIR)/%.o,$(TEST_SOURCES))
 EXAMPLE_OBJECTS := $(patsubst %.cpp,$(BUILD_DIR)/%.o,$(EXAMPLE_SOURCES))
+CLI_MAIN_OBJECT := $(BUILD_DIR)/$(CLI_MAIN_SOURCE:.cpp=.o)
+CLI_SUPPORT_OBJECT := $(BUILD_DIR)/$(CLI_SUPPORT_SOURCE:.cpp=.o)
 NOALLOC_OBJECT := $(BUILD_DIR)/$(NOALLOC_SOURCE:.cpp=.o)
 DEPENDENCIES := $(LIB_OBJECTS:.o=.d) $(TEST_OBJECTS:.o=.d) \
-                $(EXAMPLE_OBJECTS:.o=.d) $(NOALLOC_OBJECT:.o=.d)
+                $(EXAMPLE_OBJECTS:.o=.d) $(CLI_MAIN_OBJECT:.o=.d) \
+                $(CLI_SUPPORT_OBJECT:.o=.d) $(NOALLOC_OBJECT:.o=.d)
 
 LIBRARY := $(BUILD_DIR)/libtensorkiln.a
 TEST_BINARY := $(BUILD_DIR)/tensorkiln_tests
 EXAMPLE_BINARIES := $(patsubst examples/%.cpp,$(BUILD_DIR)/%,\
                     $(EXAMPLE_SOURCES))
+CLI_BINARY := $(BUILD_DIR)/tensorkiln
 NOALLOC_BINARY := $(BUILD_DIR)/execution_noalloc
+CLI_INTEGRATION_TEST := tests/test_cli_integration.py
 VISUALS_TEST := tests/test_readme_visuals.py
 VISUALS_TOOL := tools/render_readme_visuals.py
 COVERAGE_TEST := tests/test_coverage_evidence.py
@@ -69,7 +77,7 @@ ifeq ($(PROFILE),release)
   TEST_AUDIT_BINARY := $(NOALLOC_BINARY)
 endif
 
-PROJECT_CPPFLAGS := -Iinclude -Itests -MMD -MP
+PROJECT_CPPFLAGS := -Iinclude -Isrc -Itests -MMD -MP
 PROJECT_CXXFLAGS := -std=c++20 -Wall -Wextra -Wpedantic -Werror \
                     -Wconversion -Wsign-conversion -Wshadow -Wcast-qual \
                     -Wformat=2 -Wundef -Wnon-virtual-dtor -Wold-style-cast \
@@ -99,13 +107,20 @@ endif
 
 ARFLAGS := rcsD
 
-.PHONY: all test noalloc check sanitize oracle example run-examples visuals \
+.PHONY: all cli cli-check test noalloc check sanitize oracle example \
+        run-examples visuals \
         visuals-check visuals-generate visuals-verify coverage \
         coverage-check clean help
 
-all: $(LIBRARY) $(EXAMPLE_BINARIES)
+all: $(LIBRARY) $(CLI_BINARY) $(EXAMPLE_BINARIES)
 
-test: $(TEST_BINARY) run-examples $(TEST_AUDIT_BINARY)
+cli: $(CLI_BINARY)
+
+cli-check: $(CLI_BINARY)
+	python3 -B -I $(CLI_INTEGRATION_TEST) --binary $(CLI_BINARY)
+
+test: $(TEST_BINARY) $(CLI_BINARY) run-examples $(TEST_AUDIT_BINARY)
+	python3 -B -I $(CLI_INTEGRATION_TEST) --binary $(CLI_BINARY)
 	$(TEST_BINARY)
 ifeq ($(PROFILE),release)
 	$(NOALLOC_BINARY)
@@ -167,9 +182,15 @@ $(LIBRARY): $(LIB_OBJECTS)
 	@mkdir -p $(dir $@)
 	$(AR) $(ARFLAGS) $@ $^
 
-$(TEST_BINARY): $(TEST_OBJECTS) $(LIBRARY)
+$(TEST_BINARY): $(TEST_OBJECTS) $(CLI_SUPPORT_OBJECT) $(LIBRARY)
 	@mkdir -p $(dir $@)
-	$(CXX) $(TEST_OBJECTS) $(LIBRARY) $(LDFLAGS) $(PROFILE_LDFLAGS) -o $@
+	$(CXX) $(TEST_OBJECTS) $(CLI_SUPPORT_OBJECT) $(LIBRARY) \
+	       $(LDFLAGS) $(PROFILE_LDFLAGS) -o $@
+
+$(CLI_BINARY): $(CLI_MAIN_OBJECT) $(CLI_SUPPORT_OBJECT) $(LIBRARY)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CLI_MAIN_OBJECT) $(CLI_SUPPORT_OBJECT) $(LIBRARY) \
+	       $(LDFLAGS) $(PROFILE_LDFLAGS) -o $@
 
 $(NOALLOC_BINARY): $(NOALLOC_OBJECT) $(LIBRARY)
 	@mkdir -p $(dir $@)
@@ -189,9 +210,10 @@ clean:
 	rm -rf build
 
 help:
-	@echo 'Targets: all test noalloc check sanitize oracle example visuals visuals-check coverage coverage-check clean help'
+	@echo 'Targets: all cli cli-check test noalloc check sanitize oracle example visuals visuals-check coverage coverage-check clean help'
 	@echo 'Profiles: debug (default), release, sanitize, coverage'
 	@echo 'Example: make -j2 CXX=g++ PROFILE=release test'
+	@echo 'CLI: build/g++/release/tensorkiln --help'
 	@echo 'Coverage: make COVERAGE_JOBS=2 coverage (requires GCC, gcov, and LCOV 2.x)'
 
 -include $(DEPENDENCIES)
