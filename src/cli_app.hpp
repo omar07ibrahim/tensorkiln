@@ -9,6 +9,8 @@ namespace tensorkiln::cli {
 inline constexpr int kExitSuccess = 0;
 inline constexpr int kExitUsage = 2;
 inline constexpr int kExitBuildFailure = 3;
+inline constexpr int kExitRunFailure = 4;
+inline constexpr int kExitReferenceMismatch = 5;
 inline constexpr int kExitInternalFailure = 70;
 
 // Dispatches one command without consulting process-global argv, locale,

@@ -15,6 +15,16 @@ from typing import Final, Sequence
 
 TIMEOUT_SECONDS: Final = 10
 MAX_OUTPUT_BYTES: Final = 1024 * 1024
+DOCUMENTED_INPUT_BITS: Final = (
+    "x=0x3f800000,0x40000000,0x40400000,"
+    "0xbf800000,0x3f000000,0x40800000"
+)
+DOCUMENTED_OUTPUT_BITS: Final = [
+    "0x40900000",
+    "0x41300000",
+    "0x00000000",
+    "0x41300000",
+]
 
 
 class CliContractError(RuntimeError):
@@ -150,6 +160,165 @@ def verify(binary: Path) -> int:
         and "#b2 offset=0 payload=16 reserved=64 live=[2,3)" in
         plan["canonical_dump"],
         "canonical plan dump differs",
+    )
+    checks += 1
+
+    execute_command = [
+        "execute",
+        "--workload",
+        "dense_relu_v1",
+        "--input-bits",
+        DOCUMENTED_INPUT_BITS,
+        "--format=json",
+    ]
+    executed = run(binary, execute_command)
+    executed_again = run(binary, execute_command)
+    require(executed.returncode == 0, "execute did not exit successfully")
+    require(not executed.stderr, "execute wrote to stderr")
+    require(
+        executed.stdout == executed_again.stdout
+        and executed.stderr == executed_again.stderr
+        and executed.returncode == executed_again.returncode,
+        "execute process result is not byte-replayable",
+    )
+    execution_report = parse_json(executed.stdout, "execute stdout")
+    require(
+        isinstance(execution_report, dict)
+        and set(execution_report) == {"schema", "workload", "plan", "execution"}
+        and execution_report.get("schema") == "tensorkiln.cli.execute.v1",
+        "execute envelope differs",
+    )
+    require(
+        execution_report["workload"] == workloads[0],
+        "execute workload differs from the registry",
+    )
+    execute_plan = execution_report["plan"]
+    require(
+        execute_plan
+        == {
+            "stats": plan["stats"],
+            "kernels": plan["kernels"],
+        },
+        "execute plan differs from inspect",
+    )
+    execution = execution_report["execution"]
+    require(
+        isinstance(execution, dict)
+        and set(execution)
+        == {
+            "run_status",
+            "kernel_write_audit",
+            "logical_workspace_bytes",
+            "input",
+            "outputs",
+            "reference_check",
+            "verification_scope",
+            "benchmark",
+        },
+        "execution record fields differ",
+    )
+    require(
+        execution["run_status"] == "success"
+        and execution["kernel_write_audit"] is True
+        and execution["logical_workspace_bytes"] == 128
+        and execution["verification_scope"] == "this_workload_and_input_bits"
+        and execution["benchmark"] is False,
+        "execution guarantees differ",
+    )
+    require(
+        execution["input"]
+        == {
+            "name": "x",
+            "dtype": "f32",
+            "shape": [2, 3],
+            "bits": DOCUMENTED_INPUT_BITS.removeprefix("x=").split(","),
+        },
+        "execution input record differs",
+    )
+    require(
+        execution["outputs"]
+        == [
+            {
+                "name": "result",
+                "dtype": "f32",
+                "shape": [2, 2],
+                "bits": DOCUMENTED_OUTPUT_BITS,
+            }
+        ],
+        "execution output record differs",
+    )
+    require(
+        execution["reference_check"]
+        == {
+            "comparison": "raw_f32_bits",
+            "matched": 4,
+            "total": 4,
+            "status": "match",
+        },
+        "reference check differs",
+    )
+    checks += 1
+
+    zero_bits = "x=" + ",".join(["0x00000000"] * 6)
+    zero_execution = run(
+        binary,
+        [
+            "execute",
+            f"--input-bits={zero_bits}",
+            "--format=json",
+            "--workload=dense_relu_v1",
+        ],
+    )
+    require(zero_execution.returncode == 0, "zero-input execute failed")
+    require(not zero_execution.stderr, "zero-input execute wrote to stderr")
+    zero_report = parse_json(zero_execution.stdout, "zero execute stdout")
+    require(
+        zero_report["execution"]["outputs"][0]["bits"]
+        == [
+            "0x3f000000",
+            "0x00000000",
+            "0x3f000000",
+            "0x00000000",
+        ]
+        and zero_report["execution"]["outputs"][0]["bits"]
+        != DOCUMENTED_OUTPUT_BITS,
+        "zero-input execute output differs",
+    )
+    checks += 1
+
+    malformed = run(
+        binary,
+        [
+            "execute",
+            "--workload=dense_relu_v1",
+            "--input-bits=x=0x00000000,0x00000000,0x0000000g,"
+            "0x00000000,0x00000000,0x00000000",
+            "--format=json",
+        ],
+    )
+    require(malformed.returncode == 2, "malformed input exit status differs")
+    require(not malformed.stdout, "malformed input wrote to stdout")
+    malformed_error = parse_json(malformed.stderr, "malformed input stderr")
+    require(
+        malformed_error["error"]["code"] == "invalid_input_bits",
+        "malformed input error code differs",
+    )
+    checks += 1
+
+    missing_input = run(
+        binary,
+        [
+            "execute",
+            "--workload=dense_relu_v1",
+            "--format=json",
+        ],
+    )
+    require(missing_input.returncode == 2, "missing input exit status differs")
+    require(not missing_input.stdout, "missing input wrote to stdout")
+    missing_error = parse_json(missing_input.stderr, "missing input stderr")
+    require(
+        missing_error["error"]["code"] == "missing_input_bits",
+        "missing input error code differs",
     )
     checks += 1
 

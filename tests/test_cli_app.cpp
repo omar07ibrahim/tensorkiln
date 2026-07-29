@@ -1,6 +1,7 @@
 #include "test.hpp"
 
 #include <array>
+#include <cfenv>
 #include <ios>
 #include <locale>
 #include <sstream>
@@ -38,6 +39,37 @@ class FailingBuffer final : public std::streambuf {
   [[nodiscard]] int sync() override { return -1; }
 };
 
+class RoundingModeGuard final {
+ public:
+  RoundingModeGuard() noexcept : original_(std::fegetround()) {}
+
+  RoundingModeGuard(const RoundingModeGuard&) = delete;
+  RoundingModeGuard& operator=(const RoundingModeGuard&) = delete;
+
+  ~RoundingModeGuard() {
+    if (restore_required_ && original_ != -1) {
+      static_cast<void>(std::fesetround(original_));
+    }
+  }
+
+  [[nodiscard]] bool valid() const noexcept { return original_ != -1; }
+
+  [[nodiscard]] int restore() noexcept {
+    if (!restore_required_) {
+      return 0;
+    }
+    const int status = std::fesetround(original_);
+    if (status == 0) {
+      restore_required_ = false;
+    }
+    return status;
+  }
+
+ private:
+  int original_;
+  bool restore_required_ = true;
+};
+
 template <std::size_t Size>
 [[nodiscard]] Invocation invoke(
     const std::array<std::string_view, Size>& arguments) {
@@ -60,6 +92,10 @@ TK_TEST("CLI help states its bounded workload boundary") {
       invocation.output.find("TensorKiln bounded workload CLI\n") == 0U);
   TK_REQUIRE(
       invocation.output.find("not a graph dump parser") != std::string::npos);
+  TK_REQUIRE(
+      invocation.output.find("kernel-write auditing") != std::string::npos);
+  TK_REQUIRE(
+      invocation.output.find("not a benchmark") != std::string::npos);
 }
 
 TK_TEST("CLI list output is stable in text and JSON formats") {
@@ -121,6 +157,244 @@ TK_TEST("CLI inspect reports the real compiled plan deterministically") {
       std::string::npos);
   TK_REQUIRE(
       first.output.find("tensorkiln.execution_plan v0 {\\n") !=
+      std::string::npos);
+}
+
+TK_TEST("CLI execute audits and reference-checks raw f32 bits") {
+  constexpr std::array<std::string_view, 5U> arguments{{
+      "execute",
+      "--workload",
+      "dense_relu_v1",
+      "--input-bits=x=0x3f800000,0x40000000,0x40400000,"
+      "0xbf800000,0x3f000000,0x40800000",
+      "--format=json",
+  }};
+
+  const Invocation first = invoke(arguments);
+  const Invocation second = invoke(arguments);
+
+  TK_REQUIRE_EQ(first.status, tensorkiln::cli::kExitSuccess);
+  TK_REQUIRE(first.error.empty());
+  TK_REQUIRE_EQ(first.output, second.output);
+  TK_REQUIRE(
+      first.output.find("\"schema\":\"tensorkiln.cli.execute.v1\"") !=
+      std::string::npos);
+  TK_REQUIRE(
+      first.output.find(
+          "\"bits\":[\"0x40900000\",\"0x41300000\","
+          "\"0x00000000\",\"0x41300000\"]") !=
+      std::string::npos);
+  TK_REQUIRE(
+      first.output.find("\"kernel_write_audit\":true") !=
+      std::string::npos);
+  TK_REQUIRE(
+      first.output.find(
+          "\"reference_check\":{\"comparison\":\"raw_f32_bits\","
+          "\"matched\":4,\"total\":4,\"status\":\"match\"}") !=
+      std::string::npos);
+  TK_REQUIRE(first.output.find("\"benchmark\":false") !=
+             std::string::npos);
+}
+
+TK_TEST("CLI execute text changes with a second real input") {
+  constexpr std::array<std::string_view, 4U> arguments{{
+      "execute",
+      "--input-bits",
+      "x=0x00000000,0x00000000,0x00000000,"
+      "0x00000000,0x00000000,0x00000000",
+      "--workload=dense_relu_v1",
+  }};
+  const Invocation invocation = invoke(arguments);
+
+  TK_REQUIRE_EQ(invocation.status, tensorkiln::cli::kExitSuccess);
+  TK_REQUIRE(invocation.error.empty());
+  TK_REQUIRE(
+      invocation.output.find("schema: tensorkiln.cli.execute.v1") !=
+      std::string::npos);
+  TK_REQUIRE(
+      invocation.output.find(
+          "output: result f32[2,2] bits=0x3f000000,0x00000000,"
+          "0x3f000000,0x00000000") != std::string::npos);
+  TK_REQUIRE(
+      invocation.output.find(
+          "kernels: matmul_rank2_f32 -> add_broadcast_f32 -> "
+          "relu_contiguous_f32") != std::string::npos);
+  TK_REQUIRE(
+      invocation.output.find("kernel_write_audit: on") !=
+      std::string::npos);
+  TK_REQUIRE(
+      invocation.output.find("reference_check: raw_f32_bits match 4/4") !=
+      std::string::npos);
+  TK_REQUIRE(
+      invocation.output.find("benchmark: false") != std::string::npos);
+}
+
+TK_TEST("CLI execute rejects missing duplicate and foreign inputs") {
+  constexpr std::array<std::string_view, 3U> missing_arguments{{
+      "execute",
+      "--workload=dense_relu_v1",
+      "--format=json",
+  }};
+  constexpr std::array<std::string_view, 6U> duplicate_arguments{{
+      "execute",
+      "--workload=dense_relu_v1",
+      "--input-bits=x=0x00000000,0x00000000,0x00000000,"
+      "0x00000000,0x00000000,0x00000000",
+      "--input-bits",
+      "x=0x00000000,0x00000000,0x00000000,"
+      "0x00000000,0x00000000,0x00000000",
+      "--format=json",
+  }};
+  constexpr std::array<std::string_view, 4U> foreign_arguments{{
+      "execute",
+      "--workload=dense_relu_v1",
+      "--input-bits=y=0x00000000,0x00000000,0x00000000,"
+      "0x00000000,0x00000000,0x00000000",
+      "--format=json",
+  }};
+
+  const Invocation missing = invoke(missing_arguments);
+  const Invocation duplicate = invoke(duplicate_arguments);
+  const Invocation foreign = invoke(foreign_arguments);
+
+  TK_REQUIRE_EQ(missing.status, tensorkiln::cli::kExitUsage);
+  TK_REQUIRE(missing.output.empty());
+  TK_REQUIRE(
+      missing.error.find("\"code\":\"missing_input_bits\"") !=
+      std::string::npos);
+  TK_REQUIRE_EQ(duplicate.status, tensorkiln::cli::kExitUsage);
+  TK_REQUIRE(duplicate.output.empty());
+  TK_REQUIRE(
+      duplicate.error.find("\"code\":\"duplicate_option\"") !=
+      std::string::npos);
+  TK_REQUIRE_EQ(foreign.status, tensorkiln::cli::kExitUsage);
+  TK_REQUIRE(foreign.output.empty());
+  TK_REQUIRE(
+      foreign.error.find("\"code\":\"input_binding_unknown\"") !=
+      std::string::npos);
+}
+
+TK_TEST("CLI execute validates element count and canonical hex syntax") {
+  constexpr std::array<std::string_view, 4U> short_arguments{{
+      "execute",
+      "--workload=dense_relu_v1",
+      "--input-bits=x=0x00000000,0x00000000,0x00000000,"
+      "0x00000000,0x00000000",
+      "--format=json",
+  }};
+  constexpr std::array<std::string_view, 4U> malformed_arguments{{
+      "execute",
+      "--workload=dense_relu_v1",
+      "--input-bits=x=0x00000000,0x00000000,0x0000000g,"
+      "0x00000000,0x00000000,0x00000000",
+      "--format=json",
+  }};
+  constexpr std::array<std::string_view, 4U> long_arguments{{
+      "execute",
+      "--workload=dense_relu_v1",
+      "--input-bits=x=0x00000000,0x00000000,0x00000000,"
+      "0x00000000,0x00000000,0x00000000,0x00000000",
+      "--format=json",
+  }};
+  constexpr std::array<std::string_view, 4U> trailing_arguments{{
+      "execute",
+      "--workload=dense_relu_v1",
+      "--input-bits=x=0x00000000,0x00000000,0x00000000,"
+      "0x00000000,0x00000000,",
+      "--format=json",
+  }};
+  constexpr std::array<std::string_view, 4U> uppercase_arguments{{
+      "execute",
+      "--workload=dense_relu_v1",
+      "--input-bits=x=0x3F800000,0x40000000,0x40400000,"
+      "0xBF800000,0x3F000000,0x40800000",
+      "--format=json",
+  }};
+
+  const Invocation short_input = invoke(short_arguments);
+  const Invocation malformed = invoke(malformed_arguments);
+  const Invocation long_input = invoke(long_arguments);
+  const Invocation trailing = invoke(trailing_arguments);
+  const Invocation uppercase = invoke(uppercase_arguments);
+
+  TK_REQUIRE_EQ(short_input.status, tensorkiln::cli::kExitUsage);
+  TK_REQUIRE(short_input.output.empty());
+  TK_REQUIRE(
+      short_input.error.find("\"code\":\"input_element_count_mismatch\"") !=
+      std::string::npos);
+  TK_REQUIRE_EQ(malformed.status, tensorkiln::cli::kExitUsage);
+  TK_REQUIRE(malformed.output.empty());
+  TK_REQUIRE(
+      malformed.error.find("\"code\":\"invalid_input_bits\"") !=
+      std::string::npos);
+  TK_REQUIRE_EQ(long_input.status, tensorkiln::cli::kExitUsage);
+  TK_REQUIRE(long_input.output.empty());
+  TK_REQUIRE(
+      long_input.error.find("\"code\":\"input_element_count_mismatch\"") !=
+      std::string::npos);
+  TK_REQUIRE_EQ(trailing.status, tensorkiln::cli::kExitUsage);
+  TK_REQUIRE(trailing.output.empty());
+  TK_REQUIRE(
+      trailing.error.find("\"code\":\"invalid_input_bits\"") !=
+      std::string::npos);
+  TK_REQUIRE_EQ(uppercase.status, tensorkiln::cli::kExitSuccess);
+  TK_REQUIRE(uppercase.error.empty());
+  TK_REQUIRE(
+      uppercase.output.find(
+          "\"bits\":[\"0x3f800000\",\"0x40000000\","
+          "\"0x40400000\",\"0xbf800000\","
+          "\"0x3f000000\",\"0x40800000\"]") !=
+      std::string::npos);
+}
+
+TK_TEST("CLI execute maps an unsupported rounding mode to run failure") {
+  constexpr std::array<std::string_view, 4U> arguments{{
+      "execute",
+      "--workload=dense_relu_v1",
+      "--input-bits=x=0x00000000,0x00000000,0x00000000,"
+      "0x00000000,0x00000000,0x00000000",
+      "--format=json",
+  }};
+  RoundingModeGuard rounding_mode;
+  TK_REQUIRE(rounding_mode.valid());
+  TK_REQUIRE_EQ(std::fesetround(FE_DOWNWARD), 0);
+  const Invocation invocation = invoke(arguments);
+  const int restore_status = rounding_mode.restore();
+
+  TK_REQUIRE_EQ(restore_status, 0);
+  TK_REQUIRE_EQ(invocation.status, tensorkiln::cli::kExitRunFailure);
+  TK_REQUIRE(invocation.output.empty());
+  TK_REQUIRE(
+      invocation.error.find("\"code\":\"execution_failed\"") !=
+      std::string::npos);
+  TK_REQUIRE(
+      invocation.error.find("unsupported_rounding_mode") !=
+      std::string::npos);
+}
+
+TK_TEST("CLI rejects execute-only input options on other commands") {
+  constexpr std::array<std::string_view, 2U> list_arguments{{
+      "list",
+      "--input-bits=x=0x00000000",
+  }};
+  constexpr std::array<std::string_view, 4U> inspect_arguments{{
+      "inspect",
+      "--workload=dense_relu_v1",
+      "--input-bits=x=0x00000000",
+      "--format=json",
+  }};
+
+  const Invocation list = invoke(list_arguments);
+  const Invocation inspect = invoke(inspect_arguments);
+
+  TK_REQUIRE_EQ(list.status, tensorkiln::cli::kExitUsage);
+  TK_REQUIRE(list.output.empty());
+  TK_REQUIRE(
+      list.error.find("unexpected_option") != std::string::npos);
+  TK_REQUIRE_EQ(inspect.status, tensorkiln::cli::kExitUsage);
+  TK_REQUIRE(inspect.output.empty());
+  TK_REQUIRE(
+      inspect.error.find("\"code\":\"unexpected_option\"") !=
       std::string::npos);
 }
 
@@ -308,9 +582,37 @@ TK_TEST("CLI JSON ignores caller locale and formatting flags") {
   TK_REQUIRE_EQ(polluted_output.str(), canonical.output);
 }
 
+TK_TEST("CLI execute JSON ignores caller locale and formatting flags") {
+  constexpr std::array<std::string_view, 4U> arguments{{
+      "execute",
+      "--workload=dense_relu_v1",
+      "--input-bits=x=0x3f800000,0x40000000,0x40400000,"
+      "0xbf800000,0x3f000000,0x40800000",
+      "--format=json",
+  }};
+  const Invocation canonical = invoke(arguments);
+
+  std::ostringstream polluted_output;
+  polluted_output.imbue(
+      std::locale(std::locale::classic(), new GroupingPunctuation));
+  polluted_output.setf(std::ios_base::hex, std::ios_base::basefield);
+  polluted_output.setf(std::ios_base::showbase);
+  polluted_output.setf(std::ios_base::showpos);
+  std::ostringstream error;
+  const int status =
+      tensorkiln::cli::run(arguments, polluted_output, error);
+
+  TK_REQUIRE_EQ(status, tensorkiln::cli::kExitSuccess);
+  TK_REQUIRE(error.str().empty());
+  TK_REQUIRE_EQ(polluted_output.str(), canonical.output);
+}
+
 TK_TEST("CLI reports a failed stdout write as an internal failure") {
-  constexpr std::array<std::string_view, 2U> arguments{{
-      "list",
+  constexpr std::array<std::string_view, 4U> arguments{{
+      "execute",
+      "--workload=dense_relu_v1",
+      "--input-bits=x=0x00000000,0x00000000,0x00000000,"
+      "0x00000000,0x00000000,0x00000000",
       "--format=json",
   }};
   FailingBuffer failing_buffer;
