@@ -15,6 +15,9 @@ in progress.
 - a bounded `tensorkiln` CLI that constructs a versioned dense workload through
   the public graph and plan APIs, then emits deterministic text or
   machine-readable plan inspection with typed, bounded error handling;
+- audited CLI execution from exact raw `f32` bits, with mandatory per-kernel
+  write checking, fail-closed run statuses, independently interpreted
+  reference output, and publication only after complete bit agreement;
 - axis-aware `Softmax` graph and independent reference semantics for every
   valid rank 1-4 axis, including canonical negative axes, subtract-maximum
   evaluation, explicit NaN/infinity behavior, exact work accounting, rewrite
@@ -49,7 +52,11 @@ in progress.
   reference agreement, and the typed reference-only non-last-axis boundary;
 - a commit-bound Softmax terminal evidence bundle with the complete raw
   release transcript, a derived SVG panel, executable and artifact digests,
-  and source commit, tree, and blob provenance.
+  and source commit, tree, and blob provenance;
+- a v3 CLI evidence bundle that replays release `inspect` and `execute`
+  commands twice, commits their complete JSON, derives an execution-workflow
+  SVG from validated fields, and binds command, ELF, source, generator, and
+  artifact hashes.
 
 ### Changed
 

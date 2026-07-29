@@ -18,8 +18,10 @@ reference interpreter.
 > independent Python and C++ reference paths, explicit dead-code elimination
 > and structural canonicalization, reverse-verified arena planning, six dense
 > row-major kernel kinds, and a synchronous allocation-free session run path.
-> A bounded command-line inspector builds one versioned workload through the
-> same public graph and plan APIs and emits deterministic text or JSON.
+> A bounded command-line surface builds one versioned workload through the
+> same public APIs, emits deterministic plan inspection, and executes exact
+> raw-bit inputs only with kernel-write auditing and independent-reference
+> agreement.
 > Axis-aware `Softmax` is available throughout the graph and reference layers;
 > the optimized plan supports only its canonical last axis, while other valid
 > axes remain reference-only.
@@ -69,9 +71,10 @@ make -j2 visuals
 make visuals-check
 ```
 
-## Inspect a compiled workload
+## Inspect and execute a compiled workload
 
-Build the dependency-free CLI and inspect its compiled-in dense workload:
+Build the dependency-free CLI, inspect its compiled-in dense workload, and run
+the documented raw-bit fixture:
 
 ```bash
 make -j2 PROFILE=release cli
@@ -79,15 +82,33 @@ build/g++/release/tensorkiln list --format=json
 build/g++/release/tensorkiln inspect \
   --workload dense_relu_v1 \
   --format=json
+build/g++/release/tensorkiln execute \
+  --workload dense_relu_v1 \
+  --input-bits x=0x3f800000,0x40000000,0x40400000,0xbf800000,0x3f000000,0x40800000 \
+  --format=json
 ```
 
-The report is produced from a real `GraphBuilder -> ExecutionPlanCompiler`
-path. It includes the input/output contract, exact plan statistics, selected
-kernel sequence, and canonical verified-plan dump under the versioned
-`tensorkiln.cli.inspect.v1` schema. The workload catalog is intentionally
-compiled in: this is not a graph-dump parser, general model runner, or model
-file importer. The complete command, schema, error, and resource contracts are
-documented in [the CLI contract](docs/cli.md).
+Both reports come from a real `GraphBuilder -> ExecutionPlanCompiler` path.
+Inspection includes the exact input/output contract, plan statistics, selected
+kernels, and canonical verified-plan dump. Execution additionally enables the
+per-kernel write-set audit, runs the session, and publishes output only after
+all four raw `f32` bits match the separate `ReferenceInterpreter`.
+
+[![Audited TensorKiln CLI workflow derived from release JSON](docs/visuals/generated/cli-execution.svg)](docs/visuals/generated/cli-execution.svg)
+
+*This panel is derived from the real
+[`inspect` JSON](docs/visuals/generated/cli-inspect.json) and
+[`execute` JSON](docs/visuals/generated/cli-execute.json). The release binary
+ran each command twice with byte-identical stdout before the v3
+[evidence manifest](docs/visuals/generated/manifest.json) recorded the ELF,
+source, generator, command, and artifact hashes. The claim is limited to
+`dense_relu_v1` and these six input values; there are no timing fields and this
+is not a benchmark.*
+
+The workload catalog is intentionally compiled in: this is not a graph-dump
+parser, general model runner, or model-file importer. The complete command,
+schema, failure, resource, and evidence contracts are documented in
+[the CLI contract](docs/cli.md).
 
 ## Why this exists
 
@@ -133,9 +154,10 @@ TensorKiln is not an ONNX importer and does not claim ONNX conformance.
 The current vertical slice is small but runnable and inspectable:
 
 - checked scalar and rank 1-4 tensor types with explicit element/byte ceilings;
-- a bounded `tensorkiln` plan-inspection CLI with stable text/JSON output,
-  typed errors, fixed exit codes, argument ceilings, and process-level replay
-  tests;
+- a bounded `tensorkiln` inspect/execute CLI with stable text/JSON output,
+  exact raw-bit inputs, mandatory write auditing and independent-reference
+  agreement, typed errors, fixed exit codes, argument ceilings, and
+  process-level replay tests;
 - trailing multidirectional broadcasting and rank 2-4 batched `MatMul`
   inference;
 - a transactional `GraphBuilder` for `Input`, `Constant`, `Add`, `MatMul`,
@@ -266,13 +288,14 @@ checked example. Release additionally runs the allocation probe and
 rejects stale generated visuals. The examples inspect the graph-rewrite
 pipeline, show verified interval reuse, and execute an audited
 `MatMul -> Add -> Relu` plan while requiring raw-bit agreement with the
-independent interpreter. A separate audited Softmax example exposes the
-last-axis kernel, exact non-finite policy, independent-reference agreement, and
-the reference-only non-last-axis boundary. The sanitizer target runs the same
-suite under AddressSanitizer and UndefinedBehaviorSanitizer; the oracle target
-proves that both committed numerical fixtures still match their independent
-generators. See [the graph IR contract](docs/ir.md) for construction invariants
-and
+independent interpreter. The bounded CLI exposes the same plan and audited
+fixture through replayed, versioned JSON. A separate audited Softmax example
+exposes the last-axis kernel, exact non-finite policy, independent-reference
+agreement, and the reference-only non-last-axis boundary. The sanitizer target
+runs the same suite under AddressSanitizer and UndefinedBehaviorSanitizer; the
+oracle target proves that both committed numerical fixtures still match their
+independent generators. See [the graph IR contract](docs/ir.md) for
+construction invariants and
 [the reference interpreter contract](docs/reference.md) for execution,
 resource, lifetime, and numerical semantics. See
 [the compiler-pass contract](docs/compiler.md) for dead-code roots, semantic

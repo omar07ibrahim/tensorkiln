@@ -6,6 +6,15 @@
     "arena-reuse.svg": {
       "sha256": "9c0baf3fce1d27bc0fc085e360edac24a5e795d31dff75f0a75a2c547bd36088"
     },
+    "cli-execute.json": {
+      "sha256": "2d74429690aa514770d5a137ebf958f8b475a5b1cb4425a36ae7a4e42566b86b"
+    },
+    "cli-execution.svg": {
+      "sha256": "d4f0933e2759a0be0181ec4b131fd2656092496f9dfc48ffd40caa4a07e87839"
+    },
+    "cli-inspect.json": {
+      "sha256": "bafba37b0c4ece4545ee011cdb904c070bcb456a5180ef1512b6b579340a8690"
+    },
     "execute-graph.svg": {
       "sha256": "b8e6741259a7b582da5f14f111a9d821ef0279e5736fb0ad9ee3da6b1b442e8e"
     },
@@ -20,6 +29,7 @@
     }
   },
   "capture_contract": {
+    "cli_replays_per_command": 2,
     "complete_stdout": true,
     "environment": {
       "LANG": "C",
@@ -33,6 +43,9 @@
     "timeout_seconds": 30
   },
   "claim_boundary": [
+    "CLI execution evidence is limited to dense_relu_v1 and the six committed input-bit values; the CLI is not a graph or model-file importer",
+    "the release CLI was replayed twice per command with byte-identical JSON; the execute report enables kernel-write auditing and records 4/4 raw-f32-bit reference agreement",
+    "the CLI evidence contains no timing fields and is not a benchmark or performance claim",
     "execute_softmax is crafted five-slice correctness evidence with 20/20 executor-reference and 20/20 executor-fixture bit agreements",
     "the optimized last-axis kernel reports 60 scalar steps; the axis-zero reference path reports 80 total scalar steps and remains unsupported by the optimized planner",
     "the Softmax bit-exact claim is limited to the committed f32[5,4] fixture, not arbitrary finite inputs or libm implementations",
@@ -40,24 +53,30 @@
     "source blobs and captured executable bytes are hashed; the compiler, operating system, and binary supply chain are not attested"
   ],
   "generator": {
-    "bytes": 70417,
-    "commit": "d427469a0ef84eefcfc23c5bbd447b363717fb47",
+    "bytes": 100379,
+    "commit": "8a745e298894aaa7aae87a58da501fc7ab9f54c7",
     "committed": true,
-    "git_blob": "9c4f81801826d32a446ffb33eaed2d9a963110ca",
+    "git_blob": "086c8dc8155c4f33519cc789d9a6f1802bb0ca71",
     "path": "tools/render_readme_visuals.py",
-    "sha256": "ba129fab17d462cc0dc02804235eb4ee9cd9939470c361737a1a239bcb250d70",
-    "tree": "1a64a065d853dcb45ab8ffc3471c2e11683468c6"
+    "sha256": "6f2c5740cef94bb17e09b8003d757c1ef1331e897f58b2a00262ff177656ab6a",
+    "tree": "c819b45ab15ae85fc2cab3c9c31dcc29e4a33c37"
   },
   "repository_source": {
-    "commit": "9e6af465e73fef46d72f52bf25d0ad7cc89c0275",
+    "commit": "8a745e298894aaa7aae87a58da501fc7ab9f54c7",
     "object_format": "sha1",
     "selection": "latest commit touching the complete evidence build-input set",
     "source_files": {
       "Makefile": {
-        "bytes": 8400,
-        "git_blob": "8840994fd591da8be74f198d0edda02881195be8",
+        "bytes": 8428,
+        "git_blob": "bae5218476034868b81857afb1453225ea7201b2",
         "mode": "100644",
-        "sha256": "e801463914ea9d6e1bc088d2c307913a26c548a08c0a0a03591beee504cf7cfb"
+        "sha256": "ec32b3d7bcfa248005fdeb51cb980eef878868698603332e7f1c361dbababb2d"
+      },
+      "cli/tensorkiln.cpp": {
+        "bytes": 823,
+        "git_blob": "3445d88823749f4731dbb74adf9d5d2a5f3dca6c",
+        "mode": "100644",
+        "sha256": "59bb5bf7a51295f4d3dfd531b45a27e1963b4da9bb57e13a80fd50a42e154dd8"
       },
       "examples/execute_graph.cpp": {
         "bytes": 6511,
@@ -204,16 +223,16 @@
         "sha256": "ad8183d4f7af60e7b4fdf85b523fb59515109019efdcd5a99a847102449bd373"
       },
       "src/cli_app.cpp": {
-        "bytes": 17364,
-        "git_blob": "a7e232d3b2afe0a701be688fbba86e74b483c2ac",
+        "bytes": 30153,
+        "git_blob": "76d8f1ff68f81f810ec1c93f66e939fc3b7683d8",
         "mode": "100644",
-        "sha256": "0bd96dc2986efb1df515b448e97f1f19dc2109aab5886c778726753edc1cb17e"
+        "sha256": "320947c430f607189a6c9cd3206ba23794063162a2c53d11c6c8e6b9556c0116"
       },
       "src/cli_app.hpp": {
-        "bytes": 641,
-        "git_blob": "a30867c7415f1c8686375f9bc429d0012f2966bc",
+        "bytes": 732,
+        "git_blob": "a7efb29bc906edaee9f4a7c9566c2d6bc8366f5a",
         "mode": "100644",
-        "sha256": "ab78cd597748b057694bb138caf56809b4df84ed89f90d0bef393a27f878bea8"
+        "sha256": "cf6f7ac0cfc25de5c1322c1c917d5f0b697db9f132faef5906e6acc8377d4b4b"
       },
       "src/compiler_support.cpp": {
         "bytes": 8055,
@@ -366,13 +385,13 @@
         "sha256": "a713c2551805adeb01edf50f5cd0b13be90b7220b75133abe1d331d62f5d41ec"
       }
     },
-    "tree": "fbba6a935e0628904925853be818496d76d4f947"
+    "tree": "c819b45ab15ae85fc2cab3c9c31dcc29e4a33c37"
   },
   "reproduce": [
     "make -j2 PROFILE=release visuals",
     "make PROFILE=release visuals-check"
   ],
-  "schema": "tensorkiln.readme-visual-evidence.v2",
+  "schema": "tensorkiln.readme-visual-evidence.v3",
   "scope": "verified deterministic examples; not benchmarks",
   "sources": {
     "execute_graph": {
@@ -393,6 +412,41 @@
       "binary_bytes": 148360,
       "binary_sha256": "406f5b23e7bfb0770e347b901d25ab026899c5fddedd7d7244a1bca8706a76e5",
       "stdout_sha256": "5cda0ab2cc42372c6991c2387aca6635212b35d7dbb2391d0af7895f2af1c0bb"
+    },
+    "tensorkiln": {
+      "binary": "tensorkiln",
+      "binary_bytes": 722648,
+      "binary_sha256": "c2bf2b94571984122ba41908f2994a52418ae6cbcb8a82f96411049b49f4eb84",
+      "commands": {
+        "execute": {
+          "arguments": [
+            "execute",
+            "--workload",
+            "dense_relu_v1",
+            "--input-bits",
+            "x=0x3f800000,0x40000000,0x40400000,0xbf800000,0x3f000000,0x40800000",
+            "--format=json"
+          ],
+          "byte_identical": true,
+          "replays": 2,
+          "schema": "tensorkiln.cli.execute.v1",
+          "stdout_artifact": "cli-execute.json",
+          "stdout_sha256": "2d74429690aa514770d5a137ebf958f8b475a5b1cb4425a36ae7a4e42566b86b"
+        },
+        "inspect": {
+          "arguments": [
+            "inspect",
+            "--workload",
+            "dense_relu_v1",
+            "--format=json"
+          ],
+          "byte_identical": true,
+          "replays": 2,
+          "schema": "tensorkiln.cli.inspect.v1",
+          "stdout_artifact": "cli-inspect.json",
+          "stdout_sha256": "bafba37b0c4ece4545ee011cdb904c070bcb456a5180ef1512b6b579340a8690"
+        }
+      }
     }
   }
 }

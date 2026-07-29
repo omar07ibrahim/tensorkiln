@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title description">
+  <title id="title">TensorKiln audited CLI execution evidence</title>
+  <desc id="description">Release CLI inspect and execute JSON captured twice, cross-checked against each other, and rendered as a fixture-scoped workflow. Kernel-write auditing is enabled and executor output matches the independent reference for four of four raw f32 values. This is not a benchmark.</desc>
+  <rect width="100%" height="100%" rx="18" fill="#0d1117"/>
+  <text x="36" y="44" fill="#f0f6fc" font-family="DejaVu Sans, system-ui, sans-serif" font-size="23" font-weight="700">Audited CLI execution · dense_relu_v1</text>
+  <text x="36" y="70" fill="#8b949e" font-family="DejaVu Sans, system-ui, sans-serif" font-size="12">REAL RELEASE JSON · BYTE-IDENTICAL REPLAY ×2 · FIXTURE-SCOPED · NOT A BENCHMARK</text>
+  <rect x="36" y="94" width="1128" height="66" rx="10" fill="#161b22" stroke="#30363d"/>
+  <text x="56" y="119" fill="#8b949e" font-family="DejaVu Sans, system-ui, sans-serif" font-size="11">SETUP / REPRODUCE</text>
+  <text x="56" y="143" fill="#79c0ff" font-family="DejaVu Sans Mono, ui-monospace, monospace" font-size="14">make -j2 PROFILE=release cli</text>
+  <text x="445" y="143" fill="#c9d1d9" font-family="DejaVu Sans Mono, ui-monospace, monospace" font-size="13">inspect --format=json  →  execute --input-bits … --format=json</text>
+  <rect x="36" y="184" width="300" height="172" rx="12" fill="#161b22" stroke="#30363d"/>
+  <text x="56" y="214" fill="#f0f6fc" font-family="DejaVu Sans, system-ui, sans-serif" font-size="16" font-weight="700">1 · Bound input</text>
+  <text x="56" y="240" fill="#79c0ff" font-family="DejaVu Sans Mono, ui-monospace, monospace" font-size="13">x : f32[2,3] · 6 values</text>
+  <text x="56" y="276" fill="#c9d1d9" font-family="DejaVu Sans Mono, ui-monospace, monospace" font-size="11">0x3f800000  0x40000000  0x40400000</text>
+  <text x="56" y="299" fill="#c9d1d9" font-family="DejaVu Sans Mono, ui-monospace, monospace" font-size="11">0xbf800000  0x3f000000  0x40800000</text>
+  <text x="56" y="333" fill="#8b949e" font-family="DejaVu Sans, system-ui, sans-serif" font-size="11">Canonical lowercase IEEE-754 raw bits</text>
+  <rect x="360" y="184" width="804" height="172" rx="12" fill="#161b22" stroke="#30363d"/>
+  <text x="380" y="214" fill="#f0f6fc" font-family="DejaVu Sans, system-ui, sans-serif" font-size="16" font-weight="700">2 · Independently inspected execution plan</text>
+  <rect x="380" y="238" width="214" height="82" rx="10" fill="#58a6ff" opacity="0.18" stroke="#58a6ff"/>
+  <text x="396" y="268" fill="#58a6ff" font-family="DejaVu Sans Mono, ui-monospace, monospace" font-size="12" font-weight="700">matmul_rank2_f32</text>
+  <text x="396" y="296" fill="#c9d1d9" font-family="DejaVu Sans, system-ui, sans-serif" font-size="12">12 scalar steps</text>
+  <text x="608" y="286" fill="#8b949e" font-family="DejaVu Sans, system-ui, sans-serif" font-size="22">→</text>
+  <rect x="630" y="238" width="214" height="82" rx="10" fill="#d2a8ff" opacity="0.18" stroke="#d2a8ff"/>
+  <text x="646" y="268" fill="#d2a8ff" font-family="DejaVu Sans Mono, ui-monospace, monospace" font-size="12" font-weight="700">add_broadcast_f32</text>
+  <text x="646" y="296" fill="#c9d1d9" font-family="DejaVu Sans, system-ui, sans-serif" font-size="12">4 scalar steps</text>
+  <text x="858" y="286" fill="#8b949e" font-family="DejaVu Sans, system-ui, sans-serif" font-size="22">→</text>
+  <rect x="880" y="238" width="214" height="82" rx="10" fill="#f2cc60" opacity="0.18" stroke="#f2cc60"/>
+  <text x="896" y="268" fill="#f2cc60" font-family="DejaVu Sans Mono, ui-monospace, monospace" font-size="12" font-weight="700">relu_contiguous_f32</text>
+  <text x="896" y="296" fill="#c9d1d9" font-family="DejaVu Sans, system-ui, sans-serif" font-size="12">4 scalar steps</text>
+  <text x="380" y="340" fill="#8b949e" font-family="DejaVu Sans, system-ui, sans-serif" font-size="11">3 kernels · 20 scalar steps · 128 B verified workspace</text>
+  <rect x="36" y="380" width="548" height="198" rx="12" fill="#161b22" stroke="#30363d"/>
+  <text x="56" y="412" fill="#f0f6fc" font-family="DejaVu Sans, system-ui, sans-serif" font-size="16" font-weight="700">3 · Audited executor</text>
+  <circle cx="74" cy="448" r="10" fill="#3fb950"/>
+  <text x="96" y="453" fill="#7ee787" font-family="DejaVu Sans, system-ui, sans-serif" font-size="14" font-weight="700">run_status = success</text>
+  <circle cx="74" cy="483" r="10" fill="#3fb950"/>
+  <text x="96" y="488" fill="#7ee787" font-family="DejaVu Sans, system-ui, sans-serif" font-size="14" font-weight="700">kernel_write_audit = ON</text>
+  <text x="56" y="529" fill="#c9d1d9" font-family="DejaVu Sans, system-ui, sans-serif" font-size="13">Logical workspace: 128 B</text>
+  <text x="56" y="554" fill="#8b949e" font-family="DejaVu Sans, system-ui, sans-serif" font-size="11">Writes outside each kernel result payload fail closed.</text>
+  <rect x="608" y="380" width="556" height="198" rx="12" fill="#161b22" stroke="#30363d"/>
+  <text x="628" y="412" fill="#f0f6fc" font-family="DejaVu Sans, system-ui, sans-serif" font-size="16" font-weight="700">4 · Independent reference gate</text>
+  <text x="628" y="452" fill="#7ee787" font-family="DejaVu Sans, system-ui, sans-serif" font-size="26" font-weight="700">4 / 4 RAW BITS MATCH</text>
+  <text x="628" y="482" fill="#8b949e" font-family="DejaVu Sans, system-ui, sans-serif" font-size="12">comparison = raw_f32_bits</text>
+  <text x="628" y="515" fill="#c9d1d9" font-family="DejaVu Sans Mono, ui-monospace, monospace" font-size="12">0x40900000  0x41300000  0x00000000  0x41300000</text>
+  <text x="628" y="546" fill="#f2cc60" font-family="DejaVu Sans, system-ui, sans-serif" font-size="12">result : f32[2,2] · exact published output</text>
+  <rect x="36" y="602" width="1128" height="70" rx="10" fill="#0f1720" stroke="#30363d"/>
+  <text x="56" y="630" fill="#8b949e" font-family="DejaVu Sans, system-ui, sans-serif" font-size="11">EVIDENCE BOUNDARY</text>
+  <text x="56" y="653" fill="#c9d1d9" font-family="DejaVu Sans, system-ui, sans-serif" font-size="12">This proves one compiled-in workload and one input-bit fixture; it is not a model importer or a performance measurement.</text>
+  <text x="36" y="702" fill="#6e7681" font-family="DejaVu Sans Mono, ui-monospace, monospace" font-size="10">inspect sha256:bafba37b0c4ece45</text>
+  <text x="1164" y="702" text-anchor="end" fill="#6e7681" font-family="DejaVu Sans Mono, ui-monospace, monospace" font-size="10">execute sha256:2d74429690aa5147</text>
+</svg>

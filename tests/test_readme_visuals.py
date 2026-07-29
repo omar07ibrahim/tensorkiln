@@ -923,8 +923,8 @@ class SourceProvenanceTests(unittest.TestCase):
         )
 
 
-class CommittedSoftmaxEvidenceTests(unittest.TestCase):
-    def test_softmax_bundle_is_complete_safe_and_manifest_bound(self) -> None:
+class CommittedVisualEvidenceTests(unittest.TestCase):
+    def test_v3_bundle_is_complete_safe_and_manifest_bound(self) -> None:
         evidence_dir = REPOSITORY_ROOT / "docs" / "visuals" / "generated"
         manifest_path = evidence_dir / "manifest.json"
 
@@ -945,7 +945,7 @@ class CommittedSoftmaxEvidenceTests(unittest.TestCase):
             object_pairs_hook=reject_duplicate_keys,
         )
         self.assertEqual(
-            manifest["schema"], "tensorkiln.readme-visual-evidence.v2"
+            manifest["schema"], "tensorkiln.readme-visual-evidence.v3"
         )
         self.assertTrue(manifest["generator"]["committed"])
         self.assertRegex(
@@ -962,11 +962,18 @@ class CommittedSoftmaxEvidenceTests(unittest.TestCase):
             "not claimed",
         )
         self.assertEqual(
+            manifest["capture_contract"]["cli_replays_per_command"], 2
+        )
+        self.assertEqual(
             manifest["repository_source"]["selection"],
             "latest commit touching the complete evidence build-input set",
         )
         self.assertIn(
             "examples/execute_softmax.cpp",
+            manifest["repository_source"]["source_files"],
+        )
+        self.assertIn(
+            "cli/tensorkiln.cpp",
             manifest["repository_source"]["source_files"],
         )
         visuals._validate_recorded_generator(manifest["generator"])
@@ -998,6 +1005,7 @@ class CommittedSoftmaxEvidenceTests(unittest.TestCase):
             "execute_graph",
             "execute_softmax",
             "plan_arena",
+            "tensorkiln",
         ):
             self.assertEqual(
                 normalized["sources"][binary_name]["binary_bytes"],
@@ -1059,6 +1067,59 @@ class CommittedSoftmaxEvidenceTests(unittest.TestCase):
             self.assertGreaterEqual(y, 0)
             self.assertLessEqual(y, height)
 
+        inspect_path = evidence_dir / "cli-inspect.json"
+        execute_path = evidence_dir / "cli-execute.json"
+        inspect = inspect_path.read_text(encoding="ascii")
+        execute = execute_path.read_text(encoding="ascii")
+        visuals.validate_cli_evidence(inspect, execute)
+        visuals.reject_unsafe_text("committed CLI inspect JSON", inspect)
+        visuals.reject_unsafe_text("committed CLI execute JSON", execute)
+
+        cli_source = manifest["sources"]["tensorkiln"]
+        self.assertEqual(cli_source["binary"], "tensorkiln")
+        self.assertRegex(cli_source["binary_sha256"], r"^[0-9a-f]{64}$")
+        for command_name, arguments, artifact, stdout in (
+            (
+                "inspect",
+                visuals.CLI_INSPECT_ARGUMENTS,
+                "cli-inspect.json",
+                inspect,
+            ),
+            (
+                "execute",
+                visuals.CLI_EXECUTE_ARGUMENTS,
+                "cli-execute.json",
+                execute,
+            ),
+        ):
+            command = cli_source["commands"][command_name]
+            self.assertEqual(command["arguments"], list(arguments))
+            self.assertEqual(command["stdout_artifact"], artifact)
+            self.assertEqual(command["replays"], 2)
+            self.assertTrue(command["byte_identical"])
+            self.assertEqual(
+                command["stdout_sha256"],
+                hashlib.sha256(stdout.encode()).hexdigest(),
+            )
+
+        cli_svg_path = evidence_dir / "cli-execution.svg"
+        cli_svg = cli_svg_path.read_text(encoding="utf-8")
+        visuals.reject_unsafe_text("committed CLI SVG", cli_svg)
+        self.assertNotIn("<script", cli_svg.lower())
+        self.assertNotIn("<image", cli_svg.lower())
+        self.assertNotIn(" href=", cli_svg.lower())
+        cli_root = ElementTree.fromstring(cli_svg)
+        self.assertEqual(cli_root.attrib["width"], "1200")
+        self.assertEqual(cli_root.attrib["height"], "720")
+        for label in (
+            "Audited CLI execution",
+            "BYTE-IDENTICAL REPLAY ×2",
+            "kernel_write_audit = ON",
+            "4 / 4 RAW BITS MATCH",
+            "NOT A BENCHMARK",
+        ):
+            self.assertIn(label, cli_svg)
+
 
 class DocumentationAssetTests(unittest.TestCase):
     def test_architecture_is_self_contained_and_linked(self) -> None:
@@ -1117,6 +1178,9 @@ class DocumentationAssetTests(unittest.TestCase):
             "docs/visuals/generated/execute-graph.svg",
             "docs/visuals/generated/execute-softmax.svg",
             "docs/visuals/generated/execute-softmax.txt",
+            "docs/visuals/generated/cli-inspect.json",
+            "docs/visuals/generated/cli-execute.json",
+            "docs/visuals/generated/cli-execution.svg",
             "docs/visuals/generated/manifest.json",
         ):
             self.assertIn(relative_path, readme)
