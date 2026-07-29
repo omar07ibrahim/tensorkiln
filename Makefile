@@ -160,10 +160,10 @@ visuals:
 visuals-check:
 	$(MAKE) PROFILE=release visuals-verify
 
-visuals-generate: $(EXAMPLE_BINARIES)
+visuals-generate: $(EXAMPLE_BINARIES) $(CLI_BINARY)
 	python3 -B -I $(VISUALS_TOOL) --build-dir $(BUILD_DIR)
 
-visuals-verify: $(EXAMPLE_BINARIES)
+visuals-verify: $(EXAMPLE_BINARIES) $(CLI_BINARY)
 	python3 -B -I $(VISUALS_TEST)
 	python3 -B -I $(VISUALS_TOOL) --build-dir $(BUILD_DIR) --check
 
