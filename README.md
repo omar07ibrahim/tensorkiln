@@ -253,10 +253,10 @@ make visuals-check
 
 [![TensorKiln GCC and LCOV production-source coverage](docs/coverage/generated/summary.svg)](docs/coverage/generated/summary.svg)
 
-One clean GCC 13.3/LCOV 2.0 capture runs the same 229-test C++ binary and all
+One clean GCC 13.3/LCOV 2.0 capture runs the same 236-test C++ binary and all
 four checked examples before reporting only executable records under `src/`.
-The current observation is 3701/4254 lines (87.0%), 312/328 functions (95.1%),
-and 2875/5833 GCC branch edges (49.3%) across 27 instrumented production
+The current observation is 3867/4442 lines (87.1%), 324/340 functions (95.3%),
+and 3009/6111 GCC branch edges (49.2%) across 27 instrumented production
 files. The branch denominator includes compiler-generated control flow,
 including exception paths; these measurements are not benchmarks, release
 gates, or proxies for semantic correctness.
