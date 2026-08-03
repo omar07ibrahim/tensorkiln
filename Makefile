@@ -64,6 +64,8 @@ VISUALS_TEST := tests/test_readme_visuals.py
 VISUALS_TOOL := tools/render_readme_visuals.py
 COVERAGE_TEST := tests/test_coverage_evidence.py
 COVERAGE_TOOL := tools/record_coverage.py
+SOURCE_ARCHIVE_TEST := tests/test_source_archive.py
+SOURCE_ARCHIVE_TOOL := tools/verify_source_archive.py
 COVERAGE_JOBS ?= 2
 LCOV ?= lcov
 GENINFO ?= geninfo
@@ -110,7 +112,7 @@ ARFLAGS := rcsD
 .PHONY: all cli cli-check test noalloc check sanitize oracle example \
         run-examples visuals \
         visuals-check visuals-generate visuals-verify coverage \
-        coverage-check clean help
+        coverage-check source-archive-check clean help
 
 all: $(LIBRARY) $(CLI_BINARY) $(EXAMPLE_BINARIES)
 
@@ -136,6 +138,7 @@ check:
 	$(MAKE) PROFILE=debug test
 	$(MAKE) PROFILE=release test
 	$(MAKE) oracle
+	$(MAKE) source-archive-check
 
 sanitize:
 	ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:strict_string_checks=1 \
@@ -178,6 +181,10 @@ coverage-check:
 		--cxx "$(CXX)" --gcov "$(GCOV)" --lcov "$(LCOV)" \
 		--geninfo "$(GENINFO)" --jobs "$(COVERAGE_JOBS)" --check
 
+source-archive-check:
+	python3 -B -I $(SOURCE_ARCHIVE_TEST)
+	python3 -B -I $(SOURCE_ARCHIVE_TOOL)
+
 $(LIBRARY): $(LIB_OBJECTS)
 	@mkdir -p $(dir $@)
 	$(AR) $(ARFLAGS) $@ $^
@@ -210,10 +217,11 @@ clean:
 	rm -rf build
 
 help:
-	@echo 'Targets: all cli cli-check test noalloc check sanitize oracle example visuals visuals-check coverage coverage-check clean help'
+	@echo 'Targets: all cli cli-check test noalloc check sanitize oracle example visuals visuals-check coverage coverage-check source-archive-check clean help'
 	@echo 'Profiles: debug (default), release, sanitize, coverage'
 	@echo 'Example: make -j2 CXX=g++ PROFILE=release test'
 	@echo 'CLI: build/g++/release/tensorkiln --help'
 	@echo 'Coverage: make COVERAGE_JOBS=2 coverage (requires GCC, gcov, and LCOV 2.x)'
+	@echo 'Source archive: make source-archive-check (clean committed inputs required)'
 
 -include $(DEPENDENCIES)
