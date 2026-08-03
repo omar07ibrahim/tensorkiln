@@ -734,7 +734,7 @@ def validate_test_transcript(
     *,
     jobs: int = 2,
     compiler_label: str = "g++",
-) -> tuple[str, int]:
+) -> tuple[str, int, int]:
     """Require the complete deterministic suite and every checked example."""
 
     normalized = stdout.replace("\r\n", "\n")
@@ -753,6 +753,35 @@ def validate_test_transcript(
             raise CoverageEvidenceError(
                 f"coverage test stdout requires one {sentinel!r} sentinel"
             )
+    cli_summary_lines = [
+        line
+        for line in normalized.splitlines()
+        if "CLI integration:" in line
+    ]
+    if len(cli_summary_lines) != 1:
+        raise CoverageEvidenceError(
+            "coverage test stdout requires one CLI integration summary"
+        )
+    cli_summary = re.fullmatch(
+        r"CLI integration: (\d+)/(\d+) checks passed",
+        cli_summary_lines[0],
+    )
+    if cli_summary is None:
+        raise CoverageEvidenceError(
+            "coverage test stdout has a malformed CLI integration summary"
+        )
+    cli_passed = _parse_nonnegative_integer(
+        cli_summary.group(1),
+        "passed CLI integration check count",
+    )
+    cli_total = _parse_nonnegative_integer(
+        cli_summary.group(2),
+        "total CLI integration check count",
+    )
+    if cli_passed == 0 or cli_passed != cli_total:
+        raise CoverageEvidenceError(
+            "coverage CLI integration checks did not pass completely"
+        )
     summary_matches = re.findall(
         r"^(\d+)/(\d+) tests passed$", normalized, re.MULTILINE
     )
@@ -782,13 +811,14 @@ def validate_test_transcript(
         f"$ make -s -j{jobs} CXX={compiler_label} "
         "PROFILE=coverage test\n"
     )
-    return command + normalized, passed
+    return command + normalized, passed, cli_passed
 
 
 def render_summary_text(
     trace: CoverageTrace,
     *,
     test_count: int,
+    cli_checks_passed: int,
     compiler_version: str,
     lcov_version: str,
 ) -> str:
@@ -806,7 +836,9 @@ def render_summary_text(
         "",
         "scope: executable line, function, and GCC branch-edge records under src/",
         (
-            f"run: {test_count}/{test_count} C++ tests and "
+            f"run: {test_count}/{test_count} C++ tests, "
+            f"{cli_checks_passed}/{cli_checks_passed} CLI integration checks, "
+            "and "
             f"{len(EXPECTED_EXAMPLE_SENTINELS)}/"
             f"{len(EXPECTED_EXAMPLE_SENTINELS)} checked examples passed"
         ),
@@ -865,6 +897,7 @@ def render_summary_svg(
     trace: CoverageTrace,
     *,
     test_count: int,
+    cli_checks_passed: int,
     compiler_short: str,
     lcov_short: str,
     source_digest: str,
@@ -1020,7 +1053,10 @@ def render_summary_svg(
             _svg_text(
                 205,
                 720,
-                f"{test_count} TESTS + 4 EXAMPLES",
+                (
+                    f"{test_count} C++ · {cli_checks_passed} CLI · "
+                    f"{len(EXPECTED_EXAMPLE_SENTINELS)} EXAMPLES"
+                ),
                 size=11,
                 fill="#67e8f9",
                 weight=700,
@@ -1414,6 +1450,7 @@ def _manifest(
     artifacts: dict[str, bytes],
     trace: CoverageTrace,
     test_count: int,
+    cli_checks_passed: int,
     tools: dict[str, ToolIdentity],
     source_snapshot: dict[str, object],
     counters: dict[str, int],
@@ -1456,6 +1493,7 @@ def _manifest(
             "network_isolation": "not enforced",
             "stderr": "empty for the build and test command",
             "test_cases_passed": test_count,
+            "cli_checks_passed": cli_checks_passed,
             "checked_examples_passed": len(EXPECTED_EXAMPLE_SENTINELS),
             **counters,
         },
@@ -1663,7 +1701,7 @@ def record_coverage(arguments: argparse.Namespace) -> CoverageTrace:
         environment=environment,
         require_empty_stderr=True,
     )
-    transcript, test_count = validate_test_transcript(
+    transcript, test_count, cli_checks_passed = validate_test_transcript(
         build.stdout,
         jobs=arguments.jobs,
         compiler_label=tools["cxx"].label,
@@ -1685,6 +1723,7 @@ def record_coverage(arguments: argparse.Namespace) -> CoverageTrace:
         "summary.svg": render_summary_svg(
             trace,
             test_count=test_count,
+            cli_checks_passed=cli_checks_passed,
             compiler_short=f"GCC {compiler_short_match.group(1)}",
             lcov_short=f"LCOV {lcov_short_match.group(1)}",
             source_digest=str(source_snapshot["sha256"]),
@@ -1692,6 +1731,7 @@ def record_coverage(arguments: argparse.Namespace) -> CoverageTrace:
         "summary.txt": render_summary_text(
             trace,
             test_count=test_count,
+            cli_checks_passed=cli_checks_passed,
             compiler_version=tools["cxx"].version,
             lcov_version=f"LCOV {lcov_short_match.group(1)}",
         ).encode("utf-8"),
@@ -1701,6 +1741,7 @@ def record_coverage(arguments: argparse.Namespace) -> CoverageTrace:
         artifacts=artifacts,
         trace=trace,
         test_count=test_count,
+        cli_checks_passed=cli_checks_passed,
         tools=tools,
         source_snapshot=source_snapshot,
         counters=counters,
