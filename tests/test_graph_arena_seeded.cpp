@@ -27,6 +27,7 @@ using tensorkiln::GraphArenaLowering;
 using tensorkiln::GraphArenaLoweringResult;
 using tensorkiln::GraphBuilder;
 using tensorkiln::GraphLimits;
+using tensorkiln::MulOp;
 using tensorkiln::ReluOp;
 using tensorkiln::Shape;
 using tensorkiln::TensorType;
@@ -137,7 +138,8 @@ struct SeededFixture final {
       result = unwrap(builder.relu(right));
     } else if (step == 17U || step == 33U || step == 49U) {
       const ValueId other = all_values[generator.index(all_values.size())];
-      result = unwrap(builder.add(anchor, other));
+      result = (step == 33U) ? unwrap(builder.add(anchor, other))
+                             : unwrap(builder.mul(anchor, other));
     } else if ((step % 11U) == 0U) {
       const ValueId repeated =
           all_values[generator.index(all_values.size())];
@@ -149,7 +151,9 @@ struct SeededFixture final {
     } else {
       const ValueId first = all_values[generator.index(all_values.size())];
       const ValueId second = all_values[generator.index(all_values.size())];
-      result = unwrap(builder.add(first, second));
+      result = generator.index(3U) == 0U
+                   ? unwrap(builder.mul(first, second))
+                   : unwrap(builder.add(first, second));
     }
     compute_values.push_back(result);
     all_values.push_back(result);
@@ -189,6 +193,7 @@ struct SeededFixture final {
         fixture.graph.nodes()[source_ordinal];
     TK_REQUIRE_EQ(producer.output(), value);
     TK_REQUIRE(std::holds_alternative<AddOp>(producer.operation()) ||
+               std::holds_alternative<MulOp>(producer.operation()) ||
                std::holds_alternative<ReluOp>(producer.operation()));
 
     const auto begin = static_cast<std::uint32_t>(producer_step);
