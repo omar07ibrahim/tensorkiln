@@ -21,6 +21,7 @@ enum class CanonicalOperation : std::uint8_t {
   matmul,
   relu,
   softmax,
+  mul,
 };
 
 enum class SourceDisposition : std::uint8_t {
@@ -56,6 +57,9 @@ struct CanonicalKey final {
     const Operation& operation) noexcept {
   if (std::holds_alternative<AddOp>(operation)) {
     return CanonicalOperation::add;
+  }
+  if (std::holds_alternative<MulOp>(operation)) {
+    return CanonicalOperation::mul;
   }
   if (std::holds_alternative<MatMulOp>(operation)) {
     return CanonicalOperation::matmul;

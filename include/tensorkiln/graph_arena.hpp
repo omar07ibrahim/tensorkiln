@@ -12,7 +12,7 @@
 namespace tensorkiln {
 
 // Owns a verified storage-only projection of a graph onto one sequential arena.
-// Add, MatMul, Relu, and Softmax nodes receive dense execution steps and
+// Add, Mul, MatMul, Relu, and Softmax nodes receive dense execution steps and
 // compact buffer ordinals in source-node order. Input and Constant values
 // remain external.
 // Dead compute is retained, while arena-backed graph outputs remain live
@@ -92,9 +92,9 @@ class GraphArenaPlacementVerifier final {
   GraphArenaPlacementVerifier() = delete;
 
   // Reconstructs the storage projection independently and verifies placements
-  // against it. Placement #bN addresses the Nth Add, MatMul, Relu, or Softmax
-  // result in source-node order; graph ordinals can differ because Input and
-  // Constant nodes do not consume arena buffers.
+  // against it. Placement #bN addresses the Nth Add, Mul, MatMul, Relu, or
+  // Softmax result in source-node order; graph ordinals can differ because
+  // Input and Constant nodes do not consume arena buffers.
   //
   // source is borrowed only for this call and must be a valid, non-moved-from
   // VerifiedGraph. The returned artifact owns its mapping and arena plan.

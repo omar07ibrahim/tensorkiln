@@ -43,6 +43,21 @@ class ForwardKernelSelector final {
                : DenseKernelKind::add_broadcast_f32;
   }
   [[nodiscard]] std::optional<DenseKernelKind> operator()(
+      const MulOp&) const noexcept {
+    if (node_.inputs().size() != 2U) {
+      return std::nullopt;
+    }
+    const TensorType* left = graph_.type(node_.inputs()[0]);
+    const TensorType* right = graph_.type(node_.inputs()[1]);
+    if (left == nullptr || right == nullptr) {
+      return std::nullopt;
+    }
+    return left->shape() == node_.output_type().shape() &&
+                   right->shape() == node_.output_type().shape()
+               ? DenseKernelKind::mul_contiguous_f32
+               : DenseKernelKind::mul_broadcast_f32;
+  }
+  [[nodiscard]] std::optional<DenseKernelKind> operator()(
       const MatMulOp&) const noexcept {
     if (node_.inputs().size() != 2U) {
       return std::nullopt;

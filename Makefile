@@ -24,7 +24,7 @@ TEST_SOURCES := tests/test_arena_planner.cpp tests/test_arena_seeded.cpp \
                 tests/test_dead_code_elimination.cpp \
                 tests/test_execution.cpp tests/test_execution_seeded.cpp \
                 tests/test_softmax_execution_seeded.cpp \
-                tests/test_graph.cpp \
+                tests/test_graph.cpp tests/test_mul.cpp \
                 tests/test_execution_plan.cpp \
                 tests/test_execution_plan_verifier.cpp \
                 tests/test_graph_arena.cpp \

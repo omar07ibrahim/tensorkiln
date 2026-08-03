@@ -25,6 +25,8 @@ namespace {
     case DenseKernelKind::matmul_batched_f32:
     case DenseKernelKind::relu_contiguous_f32:
     case DenseKernelKind::softmax_last_axis_f32:
+    case DenseKernelKind::mul_contiguous_f32:
+    case DenseKernelKind::mul_broadcast_f32:
       return true;
   }
   return false;
@@ -58,6 +60,22 @@ class ReverseKernelClassifier final {
       return DenseKernelKind::add_contiguous_f32;
     }
     return DenseKernelKind::add_broadcast_f32;
+  }
+  [[nodiscard]] std::optional<DenseKernelKind> operator()(
+      const MulOp&) const noexcept {
+    if (node_.inputs().size() != 2U) {
+      return std::nullopt;
+    }
+    const TensorType* left = graph_.type(node_.inputs()[0]);
+    const TensorType* right = graph_.type(node_.inputs()[1]);
+    if (left == nullptr || right == nullptr) {
+      return std::nullopt;
+    }
+    if (left->shape() == node_.output_type().shape() &&
+        right->shape() == node_.output_type().shape()) {
+      return DenseKernelKind::mul_contiguous_f32;
+    }
+    return DenseKernelKind::mul_broadcast_f32;
   }
   [[nodiscard]] std::optional<DenseKernelKind> operator()(
       const MatMulOp&) const noexcept {
@@ -115,6 +133,7 @@ struct ReverseStepEvidence final {
 [[nodiscard]] Result<std::uint64_t> reverse_scalar_work(
     const VerifiedGraph& graph, const Node& node) {
   if (std::holds_alternative<AddOp>(node.operation()) ||
+      std::holds_alternative<MulOp>(node.operation()) ||
       std::holds_alternative<ReluOp>(node.operation())) {
     return Result<std::uint64_t>::success(node.output_type().numel());
   }

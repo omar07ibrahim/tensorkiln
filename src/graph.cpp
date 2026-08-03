@@ -246,6 +246,9 @@ std::string VerifiedGraph::dump() const {
     } else if (std::holds_alternative<AddOp>(operation)) {
       result += "add %" + std::to_string(definition.inputs()[0].ordinal()) +
                 ", %" + std::to_string(definition.inputs()[1].ordinal());
+    } else if (std::holds_alternative<MulOp>(operation)) {
+      result += "mul %" + std::to_string(definition.inputs()[0].ordinal()) +
+                ", %" + std::to_string(definition.inputs()[1].ordinal());
     } else if (std::holds_alternative<MatMulOp>(operation)) {
       result += "matmul %" +
                 std::to_string(definition.inputs()[0].ordinal()) + ", %" +
@@ -432,6 +435,33 @@ Result<ValueId> GraphBuilder::add(const ValueId left, const ValueId right) {
     return Result<ValueId>::failure(*type.error_if());
   }
   return commit_node(AddOp{}, {left, right}, std::move(*type.value_if()));
+}
+
+Result<ValueId> GraphBuilder::mul(const ValueId left, const ValueId right) {
+  if (finished_) {
+    return Result<ValueId>::failure(finished_error());
+  }
+  const Node* left_node = find(left);
+  if (left_node == nullptr) {
+    return Result<ValueId>::failure(value_error(left));
+  }
+  const Node* right_node = find(right);
+  if (right_node == nullptr) {
+    return Result<ValueId>::failure(value_error(right));
+  }
+
+  auto shape = infer_broadcast_shape(left_node->output_type().shape(),
+                                     right_node->output_type().shape(),
+                                     limits_.shape_limits);
+  if (!shape.has_value()) {
+    return Result<ValueId>::failure(*shape.error_if());
+  }
+  auto type = TensorType::create(*shape.value_if(), ElementType::f32,
+                                 limits_.tensor_limits);
+  if (!type.has_value()) {
+    return Result<ValueId>::failure(*type.error_if());
+  }
+  return commit_node(MulOp{}, {left, right}, std::move(*type.value_if()));
 }
 
 Result<ValueId> GraphBuilder::matmul(const ValueId left, const ValueId right) {

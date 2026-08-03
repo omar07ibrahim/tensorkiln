@@ -149,6 +149,51 @@ void execute_add_broadcast(
   }
 }
 
+void execute_mul_contiguous(
+    const ExecutionStep& step, const std::span<const PlanValue> values,
+    const std::span<const float* const> value_data,
+    float* const output_data) noexcept {
+  assert(step.operands().size() == 2U);
+  [[maybe_unused]] const PlanValue& output =
+      value_at(values, step.output());
+  const PlanValue& left = value_at(values, step.operands()[0]);
+  const PlanValue& right = value_at(values, step.operands()[1]);
+  assert(left.type() == output.type());
+  assert(right.type() == output.type());
+  const float* const left_data = data_at(value_data, left.source_value());
+  const float* const right_data = data_at(value_data, right.source_value());
+
+  for (std::uint64_t index = 0U; index < output.layout().elements();
+       ++index) {
+    const std::size_t offset = static_cast<std::size_t>(index);
+    output_data[offset] = left_data[offset] * right_data[offset];
+  }
+}
+
+void execute_mul_broadcast(
+    const ExecutionStep& step, const std::span<const PlanValue> values,
+    const std::span<const float* const> value_data,
+    float* const output_data) noexcept {
+  assert(step.operands().size() == 2U);
+  [[maybe_unused]] const PlanValue& output =
+      value_at(values, step.output());
+  const PlanValue& left = value_at(values, step.operands()[0]);
+  const PlanValue& right = value_at(values, step.operands()[1]);
+  const float* const left_data = data_at(value_data, left.source_value());
+  const float* const right_data = data_at(value_data, right.source_value());
+
+  for (std::uint64_t index = 0U; index < output.layout().elements();
+       ++index) {
+    const auto coordinates = unravel(index, output);
+    const std::size_t left_offset = static_cast<std::size_t>(
+        broadcast_offset(left, output, coordinates));
+    const std::size_t right_offset = static_cast<std::size_t>(
+        broadcast_offset(right, output, coordinates));
+    output_data[static_cast<std::size_t>(index)] =
+        left_data[left_offset] * right_data[right_offset];
+  }
+}
+
 void execute_matmul_rank2(
     const ExecutionStep& step, const std::span<const PlanValue> values,
     const std::span<const float* const> value_data,
@@ -401,6 +446,12 @@ void execute_dense_kernel(
       return;
     case DenseKernelKind::softmax_last_axis_f32:
       execute_softmax_last_axis(step, values, value_data, output);
+      return;
+    case DenseKernelKind::mul_contiguous_f32:
+      execute_mul_contiguous(step, values, value_data, output);
+      return;
+    case DenseKernelKind::mul_broadcast_f32:
+      execute_mul_broadcast(step, values, value_data, output);
       return;
   }
 }
