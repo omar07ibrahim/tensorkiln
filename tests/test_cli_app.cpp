@@ -111,8 +111,13 @@ TK_TEST("CLI list output is stable in text and JSON formats") {
 
   TK_REQUIRE_EQ(text.status, tensorkiln::cli::kExitSuccess);
   TK_REQUIRE(text.error.empty());
-  TK_REQUIRE(
-      text.output.find("dense_relu_v1") != std::string::npos);
+  const std::size_t dense_text_position =
+      text.output.find("dense_relu_v1");
+  const std::size_t reglu_text_position =
+      text.output.find("reglu_mlp_v1");
+  TK_REQUIRE(dense_text_position != std::string::npos);
+  TK_REQUIRE(reglu_text_position != std::string::npos);
+  TK_REQUIRE(dense_text_position < reglu_text_position);
   TK_REQUIRE_EQ(first_json.status, tensorkiln::cli::kExitSuccess);
   TK_REQUIRE(first_json.error.empty());
   TK_REQUIRE_EQ(first_json.output, second_json.output);
@@ -122,6 +127,13 @@ TK_TEST("CLI list output is stable in text and JSON formats") {
   TK_REQUIRE(
       first_json.output.find("\"kind\":\"compiled_in\"") !=
       std::string::npos);
+  const std::size_t dense_json_position =
+      first_json.output.find("\"id\":\"dense_relu_v1\"");
+  const std::size_t reglu_json_position =
+      first_json.output.find("\"id\":\"reglu_mlp_v1\"");
+  TK_REQUIRE(dense_json_position != std::string::npos);
+  TK_REQUIRE(reglu_json_position != std::string::npos);
+  TK_REQUIRE(dense_json_position < reglu_json_position);
 }
 
 TK_TEST("CLI inspect reports the real compiled plan deterministically") {
@@ -160,6 +172,44 @@ TK_TEST("CLI inspect reports the real compiled plan deterministically") {
       std::string::npos);
 }
 
+TK_TEST("CLI inspect compiles the bounded ReGLU-like workload") {
+  constexpr std::array<std::string_view, 4U> arguments{{
+      "inspect",
+      "--workload=reglu_mlp_v1",
+      "--format",
+      "json",
+  }};
+
+  const Invocation first = invoke(arguments);
+  const Invocation second = invoke(arguments);
+
+  TK_REQUIRE_EQ(first.status, tensorkiln::cli::kExitSuccess);
+  TK_REQUIRE(first.error.empty());
+  TK_REQUIRE_EQ(first.output, second.output);
+  TK_REQUIRE(
+      first.output.find(
+          "\"values\":11,\"inputs\":1,\"constants\":4,"
+          "\"steps\":6,\"outputs\":1,\"constant_bytes\":128,"
+          "\"scalar_steps\":80,\"workspace_bytes\":192") !=
+      std::string::npos);
+  constexpr std::array<std::string_view, 6U> kernel_names{{
+      "matmul_rank2_f32",
+      "add_broadcast_f32",
+      "relu_contiguous_f32",
+      "matmul_rank2_f32",
+      "add_broadcast_f32",
+      "mul_contiguous_f32",
+  }};
+  std::size_t position = 0U;
+  for (const std::string_view kernel : kernel_names) {
+    position = first.output.find(kernel, position);
+    TK_REQUIRE(position != std::string::npos);
+    position += kernel.size();
+  }
+  TK_REQUIRE(
+      first.output.find("#o0 result -> %10") != std::string::npos);
+}
+
 TK_TEST("CLI execute audits and reference-checks raw f32 bits") {
   constexpr std::array<std::string_view, 5U> arguments{{
       "execute",
@@ -194,6 +244,61 @@ TK_TEST("CLI execute audits and reference-checks raw f32 bits") {
       std::string::npos);
   TK_REQUIRE(first.output.find("\"benchmark\":false") !=
              std::string::npos);
+}
+
+TK_TEST("CLI execute preserves all ReGLU-like output bits") {
+  constexpr std::array<std::string_view, 5U> arguments{{
+      "execute",
+      "--workload",
+      "reglu_mlp_v1",
+      "--input-bits=x=0x3f800000,0x40000000,0x40400000,"
+      "0xbf800000,0x3f000000,0x40800000",
+      "--format=json",
+  }};
+
+  const Invocation first = invoke(arguments);
+  const Invocation second = invoke(arguments);
+
+  TK_REQUIRE_EQ(first.status, tensorkiln::cli::kExitSuccess);
+  TK_REQUIRE(first.error.empty());
+  TK_REQUIRE_EQ(first.output, second.output);
+  TK_REQUIRE(
+      first.output.find(
+          "\"shape\":[2,4],\"bits\":[\"0x00000000\","
+          "\"0x40a00000\",\"0x41480000\",\"0x40180000\","
+          "\"0x80000000\",\"0xc0f00000\",\"0x42040000\","
+          "\"0x00000000\"]") != std::string::npos);
+  TK_REQUIRE(
+      first.output.find(
+          "\"matched\":8,\"total\":8,\"status\":\"match\"") !=
+      std::string::npos);
+  TK_REQUIRE(
+      first.output.find("\"kind\":\"mul_contiguous_f32\"") !=
+      std::string::npos);
+}
+
+TK_TEST("CLI ReGLU-like workload changes on a second nontrivial input") {
+  constexpr std::array<std::string_view, 4U> arguments{{
+      "execute",
+      "--input-bits=x=0x3e800000,0xc0000000,0x3fc00000,"
+      "0x40400000,0xbf000000,0xbf800000",
+      "--workload=reglu_mlp_v1",
+      "--format=json",
+  }};
+  const Invocation invocation = invoke(arguments);
+
+  TK_REQUIRE_EQ(invocation.status, tensorkiln::cli::kExitSuccess);
+  TK_REQUIRE(invocation.error.empty());
+  TK_REQUIRE(
+      invocation.output.find(
+          "\"bits\":[\"0x00000000\",\"0x80000000\","
+          "\"0x405e0000\",\"0x00000000\",\"0x41b00000\","
+          "\"0x00000000\",\"0xc1480000\",\"0x41500000\"]") !=
+      std::string::npos);
+  TK_REQUIRE(
+      invocation.output.find(
+          "\"matched\":8,\"total\":8,\"status\":\"match\"") !=
+      std::string::npos);
 }
 
 TK_TEST("CLI execute text changes with a second real input") {
@@ -347,6 +452,50 @@ TK_TEST("CLI execute validates element count and canonical hex syntax") {
       std::string::npos);
 }
 
+TK_TEST("CLI ReGLU-like input parser enforces descriptor boundaries") {
+  constexpr std::array<std::string_view, 4U> short_arguments{{
+      "execute",
+      "--workload=reglu_mlp_v1",
+      "--input-bits=x=0x00000000,0x00000000,0x00000000,"
+      "0x00000000,0x00000000",
+      "--format=json",
+  }};
+  constexpr std::array<std::string_view, 4U> malformed_arguments{{
+      "execute",
+      "--workload=reglu_mlp_v1",
+      "--input-bits=x=0x00000000,0x00000000,0x0000000g,"
+      "0x00000000,0x00000000,0x00000000",
+      "--format=json",
+  }};
+  constexpr std::array<std::string_view, 4U> foreign_arguments{{
+      "execute",
+      "--workload=reglu_mlp_v1",
+      "--input-bits=gate=0x00000000,0x00000000,0x00000000,"
+      "0x00000000,0x00000000,0x00000000",
+      "--format=json",
+  }};
+
+  const Invocation short_input = invoke(short_arguments);
+  const Invocation malformed = invoke(malformed_arguments);
+  const Invocation foreign = invoke(foreign_arguments);
+
+  TK_REQUIRE_EQ(short_input.status, tensorkiln::cli::kExitUsage);
+  TK_REQUIRE(short_input.output.empty());
+  TK_REQUIRE(
+      short_input.error.find("input_element_count_mismatch") !=
+      std::string::npos);
+  TK_REQUIRE(
+      short_input.error.find("reglu_mlp_v1") != std::string::npos);
+  TK_REQUIRE_EQ(malformed.status, tensorkiln::cli::kExitUsage);
+  TK_REQUIRE(malformed.output.empty());
+  TK_REQUIRE(
+      malformed.error.find("invalid_input_bits") != std::string::npos);
+  TK_REQUIRE_EQ(foreign.status, tensorkiln::cli::kExitUsage);
+  TK_REQUIRE(foreign.output.empty());
+  TK_REQUIRE(
+      foreign.error.find("input_binding_unknown") != std::string::npos);
+}
+
 TK_TEST("CLI execute maps an unsupported rounding mode to run failure") {
   constexpr std::array<std::string_view, 4U> arguments{{
       "execute",
@@ -445,8 +594,10 @@ TK_TEST("CLI rejects missing and unknown workloads without stdout") {
 
   TK_REQUIRE_EQ(missing.status, tensorkiln::cli::kExitUsage);
   TK_REQUIRE(missing.output.empty());
-  TK_REQUIRE(
-      missing.error.find("missing_workload") != std::string::npos);
+  TK_REQUIRE_EQ(
+      missing.error,
+      "tensorkiln: missing_workload: inspect requires --workload ID "
+      "(available: dense_relu_v1, reglu_mlp_v1)\n");
   TK_REQUIRE_EQ(unknown.status, tensorkiln::cli::kExitUsage);
   TK_REQUIRE(unknown.output.empty());
   TK_REQUIRE(

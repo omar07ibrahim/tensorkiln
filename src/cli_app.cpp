@@ -1,5 +1,6 @@
 #include "cli_app.hpp"
 
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <cstddef>
@@ -17,6 +18,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "tensorkiln/execution.hpp"
 #include "tensorkiln/execution_plan.hpp"
@@ -29,9 +31,13 @@ constexpr std::string_view kInspectSchema = "tensorkiln.cli.inspect.v1";
 constexpr std::string_view kExecuteSchema = "tensorkiln.cli.execute.v1";
 constexpr std::string_view kListSchema = "tensorkiln.cli.workloads.v1";
 constexpr std::string_view kErrorSchema = "tensorkiln.cli.error.v1";
-constexpr std::string_view kWorkloadId = "dense_relu_v1";
-constexpr std::string_view kWorkloadDescription =
+constexpr std::string_view kDenseReluId = "dense_relu_v1";
+constexpr std::string_view kDenseReluDescription =
     "f32[2,3] -> MatMul(f32[3,2]) -> Add(f32[2]) -> Relu";
+constexpr std::string_view kRegluMlpId = "reglu_mlp_v1";
+constexpr std::string_view kRegluMlpDescription =
+    "f32[2,3] -> dual MatMul+Add branches -> Relu(gate) * value -> "
+    "f32[2,4]";
 constexpr std::size_t kMaxArgumentCount = 32U;
 constexpr std::size_t kMaxArgumentBytes = 8192U;
 constexpr std::size_t kMaxTotalArgumentBytes = 16384U;
@@ -43,6 +49,22 @@ static_assert(std::bit_cast<std::uint32_t>(1.0F) == UINT32_C(0x3f800000));
 enum class OutputFormat : std::uint8_t {
   text,
   json,
+};
+
+struct TensorDescriptor final {
+  std::string_view name;
+  std::span<const std::int64_t> shape;
+  std::size_t elements;
+};
+
+using GraphFactory = VerifiedGraph (*)();
+
+struct WorkloadDescriptor final {
+  std::string_view id;
+  std::string_view description;
+  TensorDescriptor input;
+  TensorDescriptor output;
+  GraphFactory build_graph;
 };
 
 class CliFailure final : public std::runtime_error {
@@ -130,8 +152,155 @@ template <typename T>
   return unwrap(std::move(builder).finish(), "graph finalization");
 }
 
-[[nodiscard]] ExecutionPlan build_dense_relu_plan() {
-  const VerifiedGraph graph = build_dense_relu_graph();
+[[nodiscard]] VerifiedGraph build_reglu_mlp_graph() {
+  GraphBuilder builder;
+  const ValueId input =
+      unwrap(builder.input("x", f32({2, 3})), "input construction");
+
+  constexpr std::array<float, 12U> gate_weights{{
+      1.0F, -1.0F, 0.5F, 2.0F,
+      0.5F, 1.0F, -1.0F, 0.0F,
+      -1.0F, 0.5F, 1.0F, -0.5F,
+  }};
+  const ValueId gate_weight = unwrap(
+      builder.constant("W_gate", f32({3, 4}), gate_weights),
+      "gate weight construction");
+  const ValueId gate_product =
+      unwrap(builder.matmul(input, gate_weight), "gate MatMul construction");
+  constexpr std::array<float, 4U> gate_bias_values{{
+      0.25F,
+      -0.5F,
+      1.0F,
+      0.0F,
+  }};
+  const ValueId gate_bias = unwrap(
+      builder.constant("b_gate", f32({4}), gate_bias_values),
+      "gate bias construction");
+  const ValueId shifted_gate =
+      unwrap(builder.add(gate_product, gate_bias), "gate Add construction");
+  const ValueId gate =
+      unwrap(builder.relu(shifted_gate), "gate Relu construction");
+
+  constexpr std::array<float, 12U> value_weights{{
+      2.0F, 0.5F, -1.0F, 1.0F,
+      -1.0F, 2.0F, 0.5F, -0.5F,
+      0.5F, -1.0F, 2.0F, 1.5F,
+  }};
+  const ValueId value_weight = unwrap(
+      builder.constant("W_value", f32({3, 4}), value_weights),
+      "value weight construction");
+  const ValueId value_product = unwrap(
+      builder.matmul(input, value_weight), "value MatMul construction");
+  constexpr std::array<float, 4U> value_bias_values{{
+      -0.5F,
+      1.0F,
+      -1.0F,
+      0.25F,
+  }};
+  const ValueId value_bias = unwrap(
+      builder.constant("b_value", f32({4}), value_bias_values),
+      "value bias construction");
+  const ValueId value = unwrap(
+      builder.add(value_product, value_bias), "value Add construction");
+  const ValueId result =
+      unwrap(builder.mul(gate, value), "result Mul construction");
+  static_cast<void>(
+      unwrap(builder.output("result", result), "output construction"));
+  return unwrap(std::move(builder).finish(), "graph finalization");
+}
+
+[[nodiscard]] const std::array<WorkloadDescriptor, 2U>&
+workload_registry() {
+  static constexpr std::array<std::int64_t, 2U> kInputShape{{2, 3}};
+  static constexpr std::array<std::int64_t, 2U> kDenseOutputShape{{2, 2}};
+  static constexpr std::array<std::int64_t, 2U> kRegluOutputShape{{2, 4}};
+  static const std::array<WorkloadDescriptor, 2U> kRegistry{{
+      {
+          kDenseReluId,
+          kDenseReluDescription,
+          {"x", kInputShape, 6U},
+          {"result", kDenseOutputShape, 4U},
+          &build_dense_relu_graph,
+      },
+      {
+          kRegluMlpId,
+          kRegluMlpDescription,
+          {"x", kInputShape, 6U},
+          {"result", kRegluOutputShape, 8U},
+          &build_reglu_mlp_graph,
+      },
+  }};
+  return kRegistry;
+}
+
+[[noreturn]] void workload_contract_failure(
+    const WorkloadDescriptor& workload, const std::string_view detail) {
+  throw CliFailure(
+      kExitInternalFailure, "workload_contract_mismatch",
+      "compiled-in workload '" + std::string(workload.id) +
+          "' differs from its descriptor: " + std::string(detail));
+}
+
+[[nodiscard]] bool tensor_matches_descriptor(
+    const TensorType& type, const TensorDescriptor& descriptor) noexcept {
+  const std::span<const std::int64_t> extents = type.shape().extents();
+  return type.element_type() == ElementType::f32 &&
+         type.numel() == descriptor.elements &&
+         extents.size() == descriptor.shape.size() &&
+         std::equal(extents.begin(), extents.end(), descriptor.shape.begin());
+}
+
+[[nodiscard]] VerifiedGraph build_validated_graph(
+    const WorkloadDescriptor& workload) {
+  VerifiedGraph graph = workload.build_graph();
+  const Node* input_node = nullptr;
+  const InputOp* input_op = nullptr;
+  for (const Node& node : graph.nodes()) {
+    const InputOp* const candidate = std::get_if<InputOp>(&node.operation());
+    if (candidate == nullptr) {
+      continue;
+    }
+    if (input_node != nullptr) {
+      workload_contract_failure(workload,
+                                "expected exactly one graph input");
+    }
+    input_node = &node;
+    input_op = candidate;
+  }
+  if (input_node == nullptr || input_op == nullptr) {
+    workload_contract_failure(workload,
+                              "expected exactly one graph input");
+  }
+  if (input_op->name != workload.input.name ||
+      !tensor_matches_descriptor(input_node->output_type(),
+                                 workload.input)) {
+    workload_contract_failure(workload,
+                              "input name or tensor type changed");
+  }
+
+  if (graph.outputs().size() != 1U) {
+    workload_contract_failure(workload,
+                              "expected exactly one graph output");
+  }
+  const GraphOutput& output = graph.outputs().front();
+  const TensorType* const output_type = graph.type(output.value());
+  if (output_type == nullptr || output.name() != workload.output.name ||
+      !tensor_matches_descriptor(*output_type, workload.output)) {
+    workload_contract_failure(workload,
+                              "output name or tensor type changed");
+  }
+  return graph;
+}
+
+void validate_workload_registry() {
+  for (const WorkloadDescriptor& workload : workload_registry()) {
+    static_cast<void>(build_validated_graph(workload));
+  }
+}
+
+[[nodiscard]] ExecutionPlan build_plan(
+    const WorkloadDescriptor& workload) {
+  const VerifiedGraph graph = build_validated_graph(workload);
   return unwrap(ExecutionPlanCompiler::run(graph), "plan compilation");
 }
 
@@ -417,22 +586,27 @@ struct CommandOptions final {
   return options;
 }
 
-void require_known_workload(const CommandOptions& options,
-                            const std::string_view command) {
+[[nodiscard]] const WorkloadDescriptor& require_known_workload(
+    const CommandOptions& options, const std::string_view command) {
   if (!options.workload_seen) {
     usage_failure("missing_workload",
-                  std::string(command) + " requires --workload " +
-                      std::string(kWorkloadId));
+                  std::string(command) +
+                      " requires --workload ID (available: " +
+                      std::string(kDenseReluId) + ", " +
+                      std::string(kRegluMlpId) + ")");
   }
-  if (options.workload != kWorkloadId) {
-    usage_failure("unknown_workload",
-                  "unknown workload '" + std::string(options.workload) + "'");
+  for (const WorkloadDescriptor& workload : workload_registry()) {
+    if (options.workload == workload.id) {
+      return workload;
+    }
   }
+  usage_failure("unknown_workload",
+                "unknown workload '" + std::string(options.workload) + "'");
 }
 
-struct DenseReluInput final {
-  std::array<std::uint32_t, 6U> bits;
-  std::array<float, 6U> values;
+struct WorkloadInput final {
+  std::vector<std::uint32_t> bits;
+  std::vector<float> values;
 };
 
 [[nodiscard]] std::uint32_t parse_hex_digit(const char character) {
@@ -462,32 +636,43 @@ struct DenseReluInput final {
   return result;
 }
 
-[[nodiscard]] DenseReluInput parse_dense_relu_input(
-    const CommandOptions& options) {
+[[nodiscard]] WorkloadInput parse_workload_input(
+    const CommandOptions& options, const WorkloadDescriptor& workload) {
   if (!options.input_bits_seen) {
     usage_failure(
         "missing_input_bits",
-        "execute requires --input-bits x= followed by six raw f32 values");
+        "execute requires --input-bits " +
+            std::string(workload.input.name) + "= followed by " +
+            std::to_string(workload.input.elements) +
+            " raw f32 values");
   }
-  constexpr std::string_view kBindingPrefix = "x=";
-  if (!options.input_bits.starts_with(kBindingPrefix)) {
+  const std::string binding_prefix =
+      std::string(workload.input.name) + "=";
+  if (!options.input_bits.starts_with(binding_prefix)) {
     usage_failure("input_binding_unknown",
-                  "--input-bits accepts only the binding named 'x'");
+                  "--input-bits accepts only the binding named '" +
+                      std::string(workload.input.name) + "'");
   }
   const std::string_view payload =
-      options.input_bits.substr(kBindingPrefix.size());
+      options.input_bits.substr(binding_prefix.size());
   std::size_t element_count = 1U;
   for (const char character : payload) {
     if (character == ',') {
       ++element_count;
     }
   }
-  if (element_count != 6U) {
+  if (element_count != workload.input.elements) {
     usage_failure("input_element_count_mismatch",
-                  "workload dense_relu_v1 requires exactly six input values");
+                  "workload " + std::string(workload.id) +
+                      " requires exactly " +
+                      std::to_string(workload.input.elements) +
+                      " input values");
   }
 
-  DenseReluInput input{};
+  WorkloadInput input{
+      std::vector<std::uint32_t>(workload.input.elements),
+      std::vector<float>(workload.input.elements),
+  };
   std::size_t begin = 0U;
   for (std::size_t index = 0U; index < input.bits.size(); ++index) {
     const std::size_t separator = payload.find(',', begin);
@@ -500,29 +685,72 @@ struct DenseReluInput final {
   return input;
 }
 
-void write_workload_json(std::ostream& output) {
+void write_shape_json(std::ostream& output,
+                      const std::span<const std::int64_t> shape) {
+  output.put('[');
+  for (std::size_t index = 0U; index < shape.size(); ++index) {
+    if (index != 0U) {
+      output.put(',');
+    }
+    output << shape[index];
+  }
+  output.put(']');
+}
+
+void write_shape_text(std::ostream& output,
+                      const std::span<const std::int64_t> shape) {
+  output.put('[');
+  for (std::size_t index = 0U; index < shape.size(); ++index) {
+    if (index != 0U) {
+      output.put(',');
+    }
+    output << shape[index];
+  }
+  output.put(']');
+}
+
+void write_tensor_json(std::ostream& output,
+                       const TensorDescriptor& tensor) {
+  output << "{\"name\":";
+  write_json_string(output, tensor.name);
+  output << ",\"dtype\":\"f32\",\"shape\":";
+  write_shape_json(output, tensor.shape);
+  output << ",\"elements\":" << tensor.elements << '}';
+}
+
+void write_workload_json(std::ostream& output,
+                         const WorkloadDescriptor& workload) {
   output << "{\"id\":";
-  write_json_string(output, kWorkloadId);
+  write_json_string(output, workload.id);
   output << ",\"kind\":\"compiled_in\",\"description\":";
-  write_json_string(output, kWorkloadDescription);
-  output
-      << ",\"inputs\":[{\"name\":\"x\",\"dtype\":\"f32\","
-         "\"shape\":[2,3],\"elements\":6}],"
-      << "\"outputs\":[{\"name\":\"result\",\"dtype\":\"f32\","
-         "\"shape\":[2,2],\"elements\":4}]}";
+  write_json_string(output, workload.description);
+  output << ",\"inputs\":[";
+  write_tensor_json(output, workload.input);
+  output << "],\"outputs\":[";
+  write_tensor_json(output, workload.output);
+  output << "]}";
 }
 
 void write_list(const OutputFormat format, std::ostream& output) {
+  validate_workload_registry();
   if (format == OutputFormat::text) {
-    output << "TensorKiln compiled-in workloads\n"
-           << "  " << kWorkloadId << "  " << kWorkloadDescription << '\n'
-           << "scope: bounded examples; no graph or model-file import\n";
+    output << "TensorKiln compiled-in workloads\n";
+    for (const WorkloadDescriptor& workload : workload_registry()) {
+      output << "  " << workload.id << "  " << workload.description << '\n';
+    }
+    output << "scope: bounded examples; no graph or model-file import\n";
     return;
   }
   output << "{\"schema\":";
   write_json_string(output, kListSchema);
   output << ",\"workloads\":[";
-  write_workload_json(output);
+  const auto& registry = workload_registry();
+  for (std::size_t index = 0U; index < registry.size(); ++index) {
+    if (index != 0U) {
+      output.put(',');
+    }
+    write_workload_json(output, registry[index]);
+  }
   output << "]}\n";
 }
 
@@ -593,15 +821,21 @@ void write_bits_text(std::ostream& output,
   }
 }
 
-void write_inspect_text(const ExecutionPlan& plan, std::ostream& output) {
+void write_inspect_text(const WorkloadDescriptor& workload,
+                        const ExecutionPlan& plan,
+                        std::ostream& output) {
   const ExecutionPlanStats& stats = plan.stats();
   output << "TensorKiln plan inspection\n"
          << "schema: " << kInspectSchema << '\n'
-         << "workload: " << kWorkloadId << '\n'
+         << "workload: " << workload.id << '\n'
          << "scope: compiled-in workload; not a model-file import\n"
-         << "input: x f32[2,3] elements=6\n"
-         << "output: result f32[2,2] elements=4\n"
-         << "plan: values=" << stats.value_count
+         << "input: " << workload.input.name << " f32";
+  write_shape_text(output, workload.input.shape);
+  output << " elements=" << workload.input.elements << "\noutput: "
+         << workload.output.name << " f32";
+  write_shape_text(output, workload.output.shape);
+  output << " elements=" << workload.output.elements
+         << "\nplan: values=" << stats.value_count
          << " steps=" << stats.step_count
          << " scalar_steps=" << stats.scalar_steps
          << " workspace_bytes=" << stats.workspace_bytes << '\n'
@@ -613,11 +847,13 @@ void write_inspect_text(const ExecutionPlan& plan, std::ostream& output) {
   output << "\n\n" << plan.dump();
 }
 
-void write_inspect_json(const ExecutionPlan& plan, std::ostream& output) {
+void write_inspect_json(const WorkloadDescriptor& workload,
+                        const ExecutionPlan& plan,
+                        std::ostream& output) {
   output << "{\"schema\":";
   write_json_string(output, kInspectSchema);
   output << ",\"workload\":";
-  write_workload_json(output);
+  write_workload_json(output, workload);
   output << ",\"plan\":{\"stats\":";
   write_plan_stats_json(output, plan.stats());
   output << ",\"kernels\":";
@@ -629,16 +865,21 @@ void write_inspect_json(const ExecutionPlan& plan, std::ostream& output) {
 }
 
 void write_execute_text(
-    const ExecutionPlan& plan, const DenseReluInput& input,
+    const WorkloadDescriptor& workload, const ExecutionPlan& plan,
+    const WorkloadInput& input,
     const std::span<const std::uint32_t> output_bits,
     const std::uint64_t workspace_bytes, std::ostream& output) {
   output << "TensorKiln audited execution\n"
          << "schema: " << kExecuteSchema << '\n'
-         << "workload: " << kWorkloadId << '\n'
+         << "workload: " << workload.id << '\n'
          << "scope: this compiled-in workload and these raw input bits\n"
-         << "input: x f32[2,3] bits=";
+         << "input: " << workload.input.name << " f32";
+  write_shape_text(output, workload.input.shape);
+  output << " bits=";
   write_bits_text(output, input.bits);
-  output << "\noutput: result f32[2,2] bits=";
+  output << "\noutput: " << workload.output.name << " f32";
+  write_shape_text(output, workload.output.shape);
+  output << " bits=";
   write_bits_text(output, output_bits);
   output << "\nplan: values=" << plan.stats().value_count
          << " steps=" << plan.stats().step_count
@@ -656,13 +897,14 @@ void write_execute_text(
 }
 
 void write_execute_json(
-    const ExecutionPlan& plan, const DenseReluInput& input,
+    const WorkloadDescriptor& workload, const ExecutionPlan& plan,
+    const WorkloadInput& input,
     const std::span<const std::uint32_t> output_bits,
     const std::uint64_t workspace_bytes, std::ostream& output) {
   output << "{\"schema\":";
   write_json_string(output, kExecuteSchema);
   output << ",\"workload\":";
-  write_workload_json(output);
+  write_workload_json(output, workload);
   output << ",\"plan\":{\"stats\":";
   write_plan_stats_json(output, plan.stats());
   output << ",\"kernels\":";
@@ -670,11 +912,17 @@ void write_execute_json(
   output << "},\"execution\":{\"run_status\":\"success\","
             "\"kernel_write_audit\":true,\"logical_workspace_bytes\":"
          << workspace_bytes
-         << ",\"input\":{\"name\":\"x\",\"dtype\":\"f32\","
-            "\"shape\":[2,3],\"bits\":";
+         << ",\"input\":{\"name\":";
+  write_json_string(output, workload.input.name);
+  output << ",\"dtype\":\"f32\",\"shape\":";
+  write_shape_json(output, workload.input.shape);
+  output << ",\"bits\":";
   write_bits_json(output, input.bits);
-  output << "},\"outputs\":[{\"name\":\"result\",\"dtype\":\"f32\","
-            "\"shape\":[2,2],\"bits\":";
+  output << "},\"outputs\":[{\"name\":";
+  write_json_string(output, workload.output.name);
+  output << ",\"dtype\":\"f32\",\"shape\":";
+  write_shape_json(output, workload.output.shape);
+  output << ",\"bits\":";
   write_bits_json(output, output_bits);
   output << "}],\"reference_check\":{\"comparison\":\"raw_f32_bits\","
             "\"matched\":"
@@ -684,19 +932,21 @@ void write_execute_json(
             "\"benchmark\":false}}\n";
 }
 
-[[nodiscard]] bool is_dense_relu_output_type(
-    const TensorType& type) noexcept {
+[[nodiscard]] bool is_declared_output_type(
+    const TensorType& type, const TensorDescriptor& output) noexcept {
   const std::span<const std::int64_t> extents =
       type.shape().extents();
   return type.element_type() == ElementType::f32 &&
-         extents.size() == 2U && extents[0] == 2 &&
-         extents[1] == 2 && type.numel() == 4U;
+         std::equal(extents.begin(), extents.end(), output.shape.begin(),
+                    output.shape.end()) &&
+         type.numel() == output.elements;
 }
 
-void execute_dense_relu(const CommandOptions& options,
-                        std::ostream& output) {
-  const DenseReluInput input = parse_dense_relu_input(options);
-  const ExecutionPlan plan = build_dense_relu_plan();
+void execute_workload(const CommandOptions& options,
+                      const WorkloadDescriptor& workload,
+                      std::ostream& output) {
+  const WorkloadInput input = parse_workload_input(options, workload);
+  const ExecutionPlan plan = build_plan(workload);
   ExecutionSession session = ExecutionSession::create(
       plan, ExecutionSessionOptions{true});
   if (!session.audits_kernel_writes()) {
@@ -705,7 +955,7 @@ void execute_dense_relu(const CommandOptions& options,
   }
 
   const std::array<ExecutionInputBinding, 1U> execution_bindings{{
-      {"x", input.values},
+      {workload.input.name, input.values},
   }};
   static_cast<void>(
       unwrap_diagnostic(session.bind(execution_bindings), "input binding"));
@@ -717,7 +967,7 @@ void execute_dense_relu(const CommandOptions& options,
             std::string(execution_run_status_name(run_status)));
   }
 
-  std::array<std::uint32_t, 4U> output_bits{};
+  std::vector<std::uint32_t> output_bits(workload.output.elements);
   {
     const std::optional<ExecutionResultView> result = session.result();
     if (!result.has_value() || !result->current()) {
@@ -725,16 +975,18 @@ void execute_dense_relu(const CommandOptions& options,
           kExitInternalFailure, "missing_execution_result",
           "successful execution did not publish a current result");
     }
-    const std::optional<TensorView> actual = result->output("result");
+    const std::optional<TensorView> actual =
+        result->output(workload.output.name);
     if (!actual.has_value()) {
       throw CliFailure(kExitInternalFailure, "missing_execution_output",
-                       "successful execution omitted output 'result'");
+                       "successful execution omitted output '" +
+                           std::string(workload.output.name) + "'");
     }
-    if (!is_dense_relu_output_type(actual->type()) ||
+    if (!is_declared_output_type(actual->type(), workload.output) ||
         actual->data().size() != output_bits.size()) {
       throw CliFailure(
           kExitInternalFailure, "unexpected_output_type",
-          "workload output is not the declared f32[2,2] tensor");
+          "workload output metadata differs from its descriptor");
     }
     for (std::size_t index = 0U; index < output_bits.size(); ++index) {
       output_bits[index] =
@@ -743,17 +995,18 @@ void execute_dense_relu(const CommandOptions& options,
   }
 
   const std::array<InputBinding, 1U> reference_bindings{{
-      {"x", input.values},
+      {workload.input.name, input.values},
   }};
   const ReferenceResult reference = unwrap_diagnostic(
       ReferenceInterpreter::run(plan.graph(), reference_bindings),
       "reference execution");
-  const Tensor* const expected = reference.output("result");
+  const Tensor* const expected = reference.output(workload.output.name);
   if (expected == nullptr) {
     throw CliFailure(kExitInternalFailure, "missing_reference_output",
-                     "reference execution omitted output 'result'");
+                     "reference execution omitted output '" +
+                         std::string(workload.output.name) + "'");
   }
-  if (!is_dense_relu_output_type(expected->type()) ||
+  if (!is_declared_output_type(expected->type(), workload.output) ||
       expected->data().size() != output_bits.size()) {
     throw CliFailure(
         kExitReferenceMismatch, "reference_mismatch",
@@ -772,10 +1025,10 @@ void execute_dense_relu(const CommandOptions& options,
   }
 
   if (options.format == OutputFormat::text) {
-    write_execute_text(plan, input, output_bits,
+    write_execute_text(workload, plan, input, output_bits,
                        session.workspace_bytes(), output);
   } else {
-    write_execute_json(plan, input, output_bits,
+    write_execute_json(workload, plan, input, output_bits,
                        session.workspace_bytes(), output);
   }
 }
@@ -803,19 +1056,21 @@ void execute_dense_relu(const CommandOptions& options,
   }
   if (command == "inspect") {
     const CommandOptions options = parse_options(tail, true, false);
-    require_known_workload(options, command);
-    const ExecutionPlan plan = build_dense_relu_plan();
+    const WorkloadDescriptor& workload =
+        require_known_workload(options, command);
+    const ExecutionPlan plan = build_plan(workload);
     if (options.format == OutputFormat::text) {
-      write_inspect_text(plan, output);
+      write_inspect_text(workload, plan, output);
     } else {
-      write_inspect_json(plan, output);
+      write_inspect_json(workload, plan, output);
     }
     return kExitSuccess;
   }
   if (command == "execute") {
     const CommandOptions options = parse_options(tail, true, true);
-    require_known_workload(options, command);
-    execute_dense_relu(options, output);
+    const WorkloadDescriptor& workload =
+        require_known_workload(options, command);
+    execute_workload(options, workload, output);
     return kExitSuccess;
   }
   if (command.starts_with("-")) {
