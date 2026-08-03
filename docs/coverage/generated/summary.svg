@@ -8,32 +8,32 @@
 <text x="1140" y="70" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#fbbf24" font-weight="700" text-anchor="end">NOT A QUALITY SCORE</text>
 <rect x="58" y="145" width="342" height="118" rx="14" fill="#0f172a" stroke="#334155"/>
 <text x="78" y="176" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#94a3b8" font-weight="700" text-anchor="start">LINES</text>
-<text x="78" y="220" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="34" fill="#22d3ee" font-weight="700" text-anchor="start">87.1%</text>
-<text x="380" y="218" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="end">3867 / 4442</text>
+<text x="78" y="220" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="34" fill="#22d3ee" font-weight="700" text-anchor="start">87.4%</text>
+<text x="380" y="218" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="end">4102 / 4694</text>
 <rect x="78" y="238" width="302" height="8" rx="4" fill="#26334a"/>
-<rect x="78" y="238" width="262.9" height="8" rx="4" fill="#22d3ee"/>
+<rect x="78" y="238" width="263.9" height="8" rx="4" fill="#22d3ee"/>
 <rect x="428" y="145" width="342" height="118" rx="14" fill="#0f172a" stroke="#334155"/>
 <text x="448" y="176" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#94a3b8" font-weight="700" text-anchor="start">FUNCTIONS</text>
 <text x="448" y="220" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="34" fill="#a78bfa" font-weight="700" text-anchor="start">95.3%</text>
-<text x="750" y="218" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="end">324 / 340</text>
+<text x="750" y="218" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="end">345 / 362</text>
 <rect x="448" y="238" width="302" height="8" rx="4" fill="#26334a"/>
 <rect x="448" y="238" width="287.8" height="8" rx="4" fill="#a78bfa"/>
 <rect x="798" y="145" width="342" height="118" rx="14" fill="#0f172a" stroke="#334155"/>
 <text x="818" y="176" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#94a3b8" font-weight="700" text-anchor="start">GCC BRANCH EDGES</text>
-<text x="818" y="220" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="34" fill="#fb7185" font-weight="700" text-anchor="start">49.2%</text>
-<text x="1120" y="218" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="end">3009 / 6111</text>
+<text x="818" y="220" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="34" fill="#fb7185" font-weight="700" text-anchor="start">49.5%</text>
+<text x="1120" y="218" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="end">3171 / 6407</text>
 <rect x="818" y="238" width="302" height="8" rx="4" fill="#26334a"/>
-<rect x="818" y="238" width="148.7" height="8" rx="4" fill="#fb7185"/>
+<rect x="818" y="238" width="149.5" height="8" rx="4" fill="#fb7185"/>
 <text x="58" y="305" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#f8fafc" font-weight="700" text-anchor="start">LARGEST UNCOVERED-LINE SETS</text>
 <text x="1140" y="305" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#94a3b8" font-weight="400" text-anchor="end">ordered by uncovered count, not by percentage</text>
 <text x="58" y="350" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#cbd5e1" font-weight="400" text-anchor="start">cli_app.cpp</text>
 <rect x="520" y="338" width="470" height="13" rx="6" fill="#26334a"/>
-<rect x="520" y="338" width="408.8" height="13" rx="6" fill="#22d3ee"/>
-<text x="1140" y="350" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#cbd5e1" font-weight="400" text-anchor="end">434/499 · 65 open</text>
+<rect x="520" y="338" width="414.7" height="13" rx="6" fill="#22d3ee"/>
+<text x="1140" y="350" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#cbd5e1" font-weight="400" text-anchor="end">562/637 · 75 open</text>
 <text x="58" y="384" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#cbd5e1" font-weight="400" text-anchor="start">structural_canonicalization.cpp</text>
 <rect x="520" y="372" width="470" height="13" rx="6" fill="#26334a"/>
-<rect x="520" y="372" width="381.1" height="13" rx="6" fill="#22d3ee"/>
-<text x="1140" y="384" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#cbd5e1" font-weight="400" text-anchor="end">270/333 · 63 open</text>
+<rect x="520" y="372" width="381.6" height="13" rx="6" fill="#22d3ee"/>
+<text x="1140" y="384" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#cbd5e1" font-weight="400" text-anchor="end">272/335 · 63 open</text>
 <text x="58" y="418" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#cbd5e1" font-weight="400" text-anchor="start">arena_planner.cpp</text>
 <rect x="520" y="406" width="470" height="13" rx="6" fill="#26334a"/>
 <rect x="520" y="406" width="349.4" height="13" rx="6" fill="#22d3ee"/>
@@ -44,24 +44,24 @@
 <text x="1140" y="452" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#cbd5e1" font-weight="400" text-anchor="end">68/117 · 49 open</text>
 <text x="58" y="486" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#cbd5e1" font-weight="400" text-anchor="start">execution_plan_support.cpp</text>
 <rect x="520" y="474" width="470" height="13" rx="6" fill="#26334a"/>
-<rect x="520" y="474" width="355.7" height="13" rx="6" fill="#22d3ee"/>
-<text x="1140" y="486" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#cbd5e1" font-weight="400" text-anchor="end">140/185 · 45 open</text>
+<rect x="520" y="474" width="357.5" height="13" rx="6" fill="#22d3ee"/>
+<text x="1140" y="486" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#cbd5e1" font-weight="400" text-anchor="end">143/188 · 45 open</text>
 <text x="58" y="520" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#cbd5e1" font-weight="400" text-anchor="start">execution_plan_verifier.cpp</text>
 <rect x="520" y="508" width="470" height="13" rx="6" fill="#26334a"/>
-<rect x="520" y="508" width="379.4" height="13" rx="6" fill="#22d3ee"/>
-<text x="1140" y="520" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#cbd5e1" font-weight="400" text-anchor="end">180/223 · 43 open</text>
+<rect x="520" y="508" width="380.0" height="13" rx="6" fill="#22d3ee"/>
+<text x="1140" y="520" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#cbd5e1" font-weight="400" text-anchor="end">190/235 · 45 open</text>
 <text x="58" y="554" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#cbd5e1" font-weight="400" text-anchor="start">dead_code_elimination.cpp</text>
 <rect x="520" y="542" width="470" height="13" rx="6" fill="#26334a"/>
 <rect x="520" y="542" width="362.7" height="13" rx="6" fill="#22d3ee"/>
 <text x="1140" y="554" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#cbd5e1" font-weight="400" text-anchor="end">125/162 · 37 open</text>
-<text x="58" y="588" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#cbd5e1" font-weight="400" text-anchor="start">graph_arena_lowering.cpp</text>
+<text x="58" y="588" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#cbd5e1" font-weight="400" text-anchor="start">compiler_support.cpp</text>
 <rect x="520" y="576" width="470" height="13" rx="6" fill="#26334a"/>
-<rect x="520" y="576" width="381.1" height="13" rx="6" fill="#22d3ee"/>
-<text x="1140" y="588" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#cbd5e1" font-weight="400" text-anchor="end">150/185 · 35 open</text>
-<text x="58" y="622" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#cbd5e1" font-weight="400" text-anchor="start">compiler_support.cpp</text>
+<rect x="520" y="576" width="350.8" height="13" rx="6" fill="#22d3ee"/>
+<text x="1140" y="588" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#cbd5e1" font-weight="400" text-anchor="end">103/138 · 35 open</text>
+<text x="58" y="622" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#cbd5e1" font-weight="400" text-anchor="start">graph_arena_lowering.cpp</text>
 <rect x="520" y="610" width="470" height="13" rx="6" fill="#26334a"/>
-<rect x="520" y="610" width="349.8" height="13" rx="6" fill="#22d3ee"/>
-<text x="1140" y="622" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#cbd5e1" font-weight="400" text-anchor="end">99/133 · 34 open</text>
+<rect x="520" y="610" width="381.6" height="13" rx="6" fill="#22d3ee"/>
+<text x="1140" y="622" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#cbd5e1" font-weight="400" text-anchor="end">151/186 · 35 open</text>
 <text x="58" y="656" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#cbd5e1" font-weight="400" text-anchor="start">execution.cpp</text>
 <rect x="520" y="644" width="470" height="13" rx="6" fill="#26334a"/>
 <rect x="520" y="644" width="424.2" height="13" rx="6" fill="#22d3ee"/>
@@ -69,7 +69,7 @@
 <line x1="58" y1="690" x2="1142" y2="690" stroke="#334155"/>
 <text x="58" y="720" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" fill="#67e8f9" font-weight="700" text-anchor="start">CLEAN BUILD</text>
 <text x="170" y="720" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" fill="#64748b" font-weight="400" text-anchor="start">→</text>
-<text x="205" y="720" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" fill="#67e8f9" font-weight="700" text-anchor="start">236 TESTS + 4 EXAMPLES</text>
+<text x="205" y="720" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" fill="#67e8f9" font-weight="700" text-anchor="start">247 C++ · 14 CLI · 4 EXAMPLES</text>
 <text x="405" y="720" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" fill="#64748b" font-weight="400" text-anchor="start">→</text>
 <text x="440" y="720" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" fill="#67e8f9" font-weight="700" text-anchor="start">GCC COUNTERS</text>
 <text x="565" y="720" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" fill="#64748b" font-weight="400" text-anchor="start">→</text>
@@ -79,5 +79,5 @@
 <text x="915" y="720" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" fill="#64748b" font-weight="400" text-anchor="start">→</text>
 <text x="950" y="720" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" fill="#67e8f9" font-weight="700" text-anchor="start">HASHED BUNDLE</text>
 <text x="58" y="758" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#94a3b8" font-weight="400" text-anchor="start">src/ only · 27 instrumented files · GCC 13.3.0 · LCOV 2.0-1</text>
-<text x="1140" y="758" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#94a3b8" font-weight="400" text-anchor="end">input snapshot sha256:f725039ec5cd</text>
+<text x="1140" y="758" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#94a3b8" font-weight="400" text-anchor="end">input snapshot sha256:fd2f0530bc08</text>
 </svg>

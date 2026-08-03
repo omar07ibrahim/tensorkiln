@@ -339,13 +339,13 @@ outputs; the archive and build directory are not published artifacts.
 
 The committed v1 coverage bundle is a published snapshot of one clean GCC
 13.3/LCOV 2.0 capture, not a live badge for the Unreleased working tree. That
-capture ran its recorded 236-test C++ binary and four checked examples before
-reporting only executable records under `src/`: 3867/4442 lines (87.1%),
-324/340 functions (95.3%), and 3009/6111 GCC branch edges (49.2%) across 27
-instrumented production files. The branch denominator includes
-compiler-generated control flow, including exception paths; these measurements
-are not benchmarks, release gates, proxies for semantic correctness, or a
-claim about code added after the snapshot.
+capture ran its recorded 247-test C++ binary, 14-check CLI integration suite,
+and four checked examples before reporting only executable records under
+`src/`: 4102/4694 lines (87.4%), 345/362 functions (95.3%), and
+3171/6407 GCC branch edges (49.5%) across 27 instrumented production files.
+The branch denominator includes compiler-generated control flow, including exception
+paths; these measurements are not benchmarks, release gates, proxies for
+semantic correctness, or a claim about code added after the snapshot.
 
 The [coverage contract](docs/coverage/README.md) documents setup, exact scope,
 the clean capture pipeline, independent trace validation, and interpretation
