@@ -2134,8 +2134,8 @@ def render_reglu_graph_svg(evidence: RegluEvidence) -> str:
             (
                 '  <text x="56" y="626" fill="#8b949e" '
                 'font-family="system-ui, sans-serif" font-size="11">'
-                "Edges, value IDs, kernel names, and work counts are parsed "
-                "from the release inspect canonical dump.</text>"
+                "Constants %1/%3/%6/%8 are omitted; labels drop only _f32. "
+                "All IDs and work counts come from inspect.</text>"
             ),
             "</svg>",
             "",
@@ -2526,20 +2526,47 @@ def _draw_raster_text(
         cursor_x += 6 * scale
 
 
-def _wrap_terminal_lines(
-    command: str, stdout: str, columns: int
+def _terminal_frame_lines(
+    command: str,
+    stdout: str,
+    columns: int,
+    maximum_rows: int,
+    *,
+    tail: bool,
 ) -> list[str]:
+    """Wrap a capture and select complete source lines for a tail frame."""
+
+    if columns <= 0 or maximum_rows <= 0:
+        raise VisualEvidenceError("terminal frame dimensions are invalid")
     reject_unsafe_text("terminal command", command)
     normalized = validate_stdout("terminal capture", stdout, ())
-    wrapped: list[str] = []
+    groups: list[list[str]] = []
     for line in [f"$ {command}", *normalized.splitlines()]:
         if not line:
-            wrapped.append("")
+            groups.append([""])
             continue
+        wrapped: list[str] = []
         while line:
             wrapped.append(line[:columns])
             line = line[columns:]
-    return wrapped
+        groups.append(wrapped)
+
+    flattened = [line for group in groups for line in group]
+    if len(flattened) <= maximum_rows:
+        return flattened
+    if not tail:
+        return flattened[:maximum_rows]
+
+    selected: list[list[str]] = []
+    selected_rows = 0
+    for group in reversed(groups):
+        if selected_rows + len(group) > maximum_rows:
+            break
+        selected.append(group)
+        selected_rows += len(group)
+    if not selected:
+        return groups[-1][:maximum_rows]
+    return [line for group in reversed(selected) for line in group]
 
 
 def _render_terminal_frame(
@@ -2566,10 +2593,14 @@ def _render_terminal_frame(
     _draw_raster_text(pixels, width, height, 112, 33, title, 3, scale=2)
 
     columns = 73
-    lines = _wrap_terminal_lines(command, stdout, columns)
     maximum_rows = 24
-    if len(lines) > maximum_rows:
-        lines = lines[-maximum_rows:] if tail else lines[:maximum_rows]
+    lines = _terminal_frame_lines(
+        command,
+        stdout,
+        columns,
+        maximum_rows,
+        tail=tail,
+    )
     for row, line in enumerate(lines):
         color = 3
         if line.startswith("$"):
@@ -3993,6 +4024,12 @@ def render_visuals(
             "compiler, operating system, and binary supply chain are not "
             "attested"
         ),
+        (
+            "full-history checks authenticate recorded commit and tree "
+            "objects; shallow checks bind current generator and source blob "
+            "content but cannot authenticate unavailable historical Git "
+            "objects"
+        ),
     ]
     sources = {
         "execute_graph": {
@@ -4022,14 +4059,15 @@ def render_visuals(
         schema = "tensorkiln.readme-visual-evidence.v3"
         claim_boundary[0:0] = [
             (
-                "CLI execution evidence is limited to dense_relu_v1 and the "
-                "six committed input-bit values; the CLI is not a graph or "
-                "model-file importer"
+                "the preserved v3 dense CLI evidence is limited to "
+                "dense_relu_v1 and the six committed input-bit values; the "
+                "CLI is not a graph or model-file importer"
             ),
             (
-                "the release CLI was replayed twice per command with "
-                "byte-identical JSON; the execute report enables kernel-write "
-                "auditing and records 4/4 raw-f32-bit reference agreement"
+                "the preserved v3 dense CLI commands were replayed twice per "
+                "command with byte-identical JSON; the dense execute report "
+                "enables kernel-write auditing and records 4/4 raw-f32-bit "
+                "reference agreement"
             ),
             (
                 "the CLI evidence contains no timing fields and is not a "
@@ -4337,6 +4375,23 @@ def _validate_recorded_generator(
             "Git reported a malformed shallow-repository state"
         )
     if shallow == "true":
+        payload = _read_regular_file(
+            REPOSITORY_ROOT / GENERATOR_PATH,
+            MAX_SOURCE_BYTES,
+            "current evidence generator",
+        )
+        object_payload = (
+            f"blob {len(payload)}\0".encode("ascii") + payload
+        )
+        current_blob = hashlib.new(object_format, object_payload).hexdigest()
+        if (
+            len(payload) != byte_length
+            or hashlib.sha256(payload).hexdigest() != sha256
+            or current_blob != blob
+        ):
+            raise VisualEvidenceError(
+                "shallow checkout generator differs from recorded evidence"
+            )
         return generator
 
     _run_git(("merge-base", "--is-ancestor", commit, "HEAD"))
