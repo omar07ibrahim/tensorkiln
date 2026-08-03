@@ -89,10 +89,11 @@ VerifiedGraph
 
 The graph projection applies these exact rules:
 
-1. Visit definitions in source-node order. Each `Add`, `MatMul`, `Relu`, and
-   `Softmax` result receives one dense execution step and one dense buffer
-   ordinal. `Input` and `Constant` values remain external and consume neither
-   domain. The Softmax axis does not change its dense payload or lifetime.
+1. Visit definitions in source-node order. Each `Add`, `Mul`, `MatMul`,
+   `Relu`, and `Softmax` result receives one dense execution step and one dense
+   buffer ordinal. `Input` and `Constant` values remain external and consume
+   neither domain. The Softmax axis does not change its dense payload or
+   lifetime.
 2. The request payload is the verified output type's exact byte count. All dead
    compute remains present unless the caller ran DCE first.
 3. Let `C` be the compute-step count and let a buffer be produced at step `p`.
@@ -146,9 +147,9 @@ Workspace accounting in the explicit layer is semantic-agnostic and includes
 every supplied request. It excludes only resources omitted from the request
 list, along with an aligned allocator's base over-allocation and metadata. The
 current graph projection omits external inputs and immutable constants and
-includes every `Add`, `MatMul`, `Relu`, and `Softmax` result. Prepacked weights,
-metadata-only views, aliases, and kernel scratch do not yet exist in that
-projection.
+includes every `Add`, `Mul`, `MatMul`, `Relu`, and `Softmax` result. Prepacked
+weights, metadata-only views, aliases, and kernel scratch do not yet exist in
+that projection.
 
 ## Exact explicit-placement verifier order
 
@@ -258,6 +259,21 @@ This integration does not make `ArenaPlan` or `GraphArenaLoweringResult`
 executable on their own. Neither artifact owns kernels, input bindings, result
 views, floating-point checks, or mutable workspace. Those contracts belong to
 [verified dense execution](execution.md).
+
+## Fixed ReGLU arena evidence
+
+[![Exact arena lifetimes for the fixed six-step ReGLU fixture](visuals/generated/reglu-arena.svg)](visuals/generated/reglu-arena.svg)
+
+The source-bound [inspect JSON](visuals/generated/reglu-inspect.json) records
+the compiled-in `reglu_mlp_v1` fixture: six materializing steps using four
+distinct kernel kinds and one `result: f32[2,4]` output tensor containing eight
+words. Each step produces a 32-byte payload with a 64-byte reservation. The
+verified lifetimes place the six buffers at offsets 0, 64, and 128 in a
+192-byte logical workspace. The output's 8/8 independent-reference evidence is
+scoped in [the reference contract](reference.md#fixed-reglu-fixture).
+
+This diagram records one deterministic placement for one fixed fixture. It is
+not a benchmark, a minimum-workspace proof, or a planner-optimality claim.
 
 ## Worked schedule
 

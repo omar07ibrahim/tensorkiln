@@ -11,8 +11,8 @@ rigorous static tensor-graph compiler and CPU runtime. It will accept a small
 programmatic graph, reject invalid programs, derive all result types, compile
 valid graphs into explicit execution plans, and run those plans inside a
 preallocated workspace. The currently shipped graph front-end, reference
-interpreter, graph rewrites, and storage-planning slice are listed in the
-README.
+interpreter, graph rewrites, storage planning, dense execution runtime, and
+bounded compiled-workload CLI are listed in the README.
 
 It qualifies as a graph compiler by owning and testing semantic verification,
 whole-graph rewrites, layout decisions, kernel selection, and storage planning.
@@ -78,17 +78,21 @@ graph. Compilation then performs, in order:
 This sequence remains the full v0.1 target. Dead-code elimination and exact
 structural canonicalization are the graph-to-graph stages available today and
 remain explicit rather than automatic. A storage-only slice of stage 7 derives
-one request for every current `Add`, `MatMul`, `Relu`, and `Softmax` result and
-requires independent reverse agreement before returning it.
+one request for every current `Add`, `Mul`, `MatMul`, `Relu`, and `Softmax`
+result and requires independent reverse agreement before returning it.
 
 A narrow executable slice of stages 6 through 8 is also implemented for the
 current dense row-major operators. `ExecutionPlanCompiler` selects contiguous
-or broadcast `Add`, rank-2 or batched `MatMul`, contiguous `Relu`, and
-last-axis `Softmax` kernels, then submits only those choices and arena offsets
-to an independent verifier. Valid non-last Softmax axes remain reference-only.
-The verifier reconstructs operands, layouts, storage, lifetimes, limits, and
-work accounting before it can return an owning plan. `ExecutionSession`
-allocates the verified workspace and executes the plan synchronously.
+or broadcast `Add`, contiguous or broadcast `Mul`, rank-2 or batched `MatMul`,
+contiguous `Relu`, and last-axis `Softmax` kernels, then submits only those
+choices and arena offsets to an independent verifier. These are eight kernel
+variants in total: seven algebraic variants plus last-axis Softmax. The Mul
+variants were appended at public `DenseKernelKind` ordinals 6 and 7 without
+renumbering ordinals 0 through 5. Valid non-last Softmax axes remain
+reference-only. The verifier reconstructs operands, layouts, storage,
+lifetimes, limits, and work accounting before it can return an owning plan.
+`ExecutionSession` allocates the verified workspace and executes the plan
+synchronously.
 
 This slice does not imply that the intervening target stages are complete.
 Fusion, strided or transposed views, in-place alias proof, reshape lowering,
@@ -102,11 +106,12 @@ order and aliases, and stable relative order of surviving definitions. Its
 exact shipped guarantees are specified in
 [the compiler-pass contract](compiler.md).
 
-Structural canonicalization performs only exact `Add`, `MatMul`, `Relu`, and
-canonical-axis `Softmax` common-subexpression elimination plus redundant-ReLU
-removal. It preserves output alias classes and does not apply algebraic
-identities or floating-point reassociation. Its exact shipped guarantees are
-specified in the same compiler-pass contract.
+Structural canonicalization performs only exact `Add`, `Mul`, `MatMul`,
+`Relu`, and canonical-axis `Softmax` common-subexpression elimination plus
+redundant-ReLU removal. Its keys retain operand order, so neither Add nor Mul
+is rewritten by commutativity. It preserves output alias classes and does not
+apply algebraic identities or floating-point reassociation. Its exact shipped
+guarantees are specified in the same compiler-pass contract.
 
 The graph IR describes logical tensors. The full target plan IR will own
 strides, alias decisions, kernel variants, arena offsets, scratch requirements,

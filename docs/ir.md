@@ -8,10 +8,10 @@ canonicalization are available. The standalone interval-placement API is
 specified in [the arena contract](arena.md), together with the shipped
 storage-only graph projection. A separate execution-plan IR now owns verified
 dense layouts, storage classes, kernel choices, and arena offsets for the
-current `Add`, `MatMul`, `Relu`, and last-axis `Softmax` slice; it is specified
-in [the execution contract](execution.md). The logical graph IR remains
-unchanged and contains none of those lowering decisions. Fusion, views and
-in-place aliases, scratch, prepacking, and broader lowering remain later
+current `Add`, `Mul`, `MatMul`, `Relu`, and last-axis `Softmax` slice; it is
+specified in [the execution contract](execution.md). The logical graph IR
+remains unchanged and contains none of those lowering decisions. Fusion, views
+and in-place aliases, scratch, prepacking, and broader lowering remain later
 layers.
 
 ## Construction boundary
@@ -30,14 +30,20 @@ unwrap(builder.output("result", result));
 VerifiedGraph graph = unwrap(std::move(builder).finish());
 ```
 
-The builder currently supports `Input`, `Constant`, `Add`, `MatMul`, and
-`Relu`, plus axis-aware `Softmax` for rank 1 through 4. `Add` uses trailing
-multidirectional broadcasting. `MatMul` accepts rank 2 through 4, broadcasts
-batch prefixes, checks `K`, and returns
+The builder currently supports `Input`, `Constant`, `Add`, `Mul`, `MatMul`,
+and `Relu`, plus axis-aware `Softmax` for rank 1 through 4. `Add` and `Mul` use
+the same trailing multidirectional broadcasting rule. `MatMul` accepts rank 2
+through 4, broadcasts batch prefixes, checks `K`, and returns
 `broadcast(batch(A), batch(B)) + [M,N]`. `Softmax` preserves its input type.
 Its axis accepts the inclusive range `[-rank, rank - 1]`; a negative axis is
 normalized by adding the input rank, and only the canonical non-negative axis
 is stored in the immutable graph. Rank-zero tensors have no valid axis.
+
+`MulOp` is appended to the public `Operation` variant at index 6. The existing
+indices remain `InputOp=0`, `ConstantOp=1`, `AddOp=2`, `MatMulOp=3`,
+`ReluOp=4`, and `SoftmaxOp=5`; adding Mul did not renumber them. A Mul node
+retains its left and right operands in caller order even though both orders
+derive the same broadcast result shape.
 
 The reference interpreter evaluates every valid `Softmax` axis. The optimized
 execution-plan backend remains narrower: it selects

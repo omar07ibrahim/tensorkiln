@@ -9,10 +9,11 @@ Graph arena lowering is also available as a storage-only projection. It derives
 lifetimes for the current materializing operations and requires independent
 reverse placement verification, but it is not a graph-to-graph rewrite or an
 executable plan. A separate `ExecutionPlanCompiler` now builds a narrow dense
-row-major plan on top of that verified placement and selects five precompiled
-kernel variants. Fusion, views and in-place aliases, scratch, prepacking, and
-broader optimized lowering remain later layers. Storage and runtime boundaries
-are specified in [the arena contract](arena.md) and
+row-major plan on top of that verified placement and selects eight precompiled
+kernel variants: seven algebraic variants and one last-axis Softmax variant.
+Fusion, views and in-place aliases, scratch, prepacking, and broader optimized
+lowering remain later layers. Storage and runtime boundaries are specified in
+[the arena contract](arena.md) and
 [the execution contract](execution.md).
 
 ## Public boundary
@@ -64,7 +65,7 @@ result reflects its fresh owner domain and any removed definitions; lowering
 the canonicalized result additionally reflects exact CSE and redundant-ReLU
 removal. `GraphArenaLowering` does not choose that ordering, mutate the selected
 graph, or carry compiler provenance into its result. It assigns dense steps
-to `Add`, `MatMul`, `Relu`, and `Softmax`; inputs and constants remain
+to `Add`, `Mul`, `MatMul`, `Relu`, and `Softmax`; inputs and constants remain
 external. A successful result proves a reverse-verified sequential storage
 placement, not numerical equivalence or execution. Storage lowering accepts
 every valid Softmax axis because its dense output size and lifetime do not
@@ -91,11 +92,18 @@ tensorkiln::ExecutionPlan plan =
 preflights the selected graph, obtains its reverse-verified arena projection,
 and proposes only two kinds of decisions: one source-node/kernel pair per
 compute step and one byte offset per arena buffer. Kernel selection currently
-distinguishes equal-shape and broadcast `Add`, rank-2 and batched `MatMul`, and
-contiguous `Relu`, plus `softmax_last_axis_f32` when a `Softmax` stores the
-canonical final axis. A valid non-last Softmax remains outside the optimized
-slice, so plan compilation returns `plan_operation_unsupported` before
-accepting candidate steps or placements.
+distinguishes equal-shape and broadcast `Add`, equal-shape and broadcast `Mul`,
+rank-2 and batched `MatMul`, and contiguous `Relu`, plus
+`softmax_last_axis_f32` when a `Softmax` stores the canonical final axis. A
+valid non-last Softmax remains outside the optimized slice, so plan compilation
+returns `plan_operation_unsupported` before accepting candidate steps or
+placements.
+
+The public `DenseKernelKind` domain has eight alternatives. Adding Mul leaves
+the existing ordinals 0 through 5 unchanged and appends
+`mul_contiguous_f32=6` and `mul_broadcast_f32=7`. The two Mul variants complete
+the current seven algebraic variants; `softmax_last_axis_f32` remains the one
+transcendental variant.
 
 `ExecutionPlanVerifier` is the only construction path for the returned plan.
 It independently reconstructs dense layouts, operand edges, input/constant/
@@ -104,9 +112,10 @@ limits from the source graph. It then validates the compiler's kernel choices
 and placements against those facts. The candidate cannot supply trusted
 operands, layouts, lifetimes, statistics, or constant data.
 
-Forward analysis and reverse verification each reconstruct the last-axis
-Softmax compatibility condition and checked `3 * numel` work independently.
-The candidate supplies neither the axis nor its work count.
+Forward analysis and reverse verification independently reconstruct both
+operation compatibility and scalar work: `numel` for `Add`, `Mul`, and `Relu`,
+`output_numel * K` for `MatMul`, and checked `3 * numel` for `Softmax`. The
+candidate supplies neither shapes nor axes nor any work count.
 
 The move-only result owns a copy of the selected graph, its constant payloads,
 the verified plan records, and the verified arena projection. Compilation does
@@ -156,14 +165,17 @@ payload bits.
 
 The only v0 rewrite rules are:
 
-1. exact CSE for `Add`, `MatMul`, `Relu`, and `Softmax` when the explicit
-   operation kind, operation payload (including canonical Softmax axis),
-   ordered canonical operand IDs, and complete output `TensorType` match;
+1. exact CSE for `Add`, `Mul`, `MatMul`, `Relu`, and `Softmax` when the
+   explicit operation kind, operation payload (including canonical Softmax
+   axis), ordered canonical operand IDs, and complete output `TensorType`
+   match;
 2. `Relu(Relu(x)) -> Relu(x)`.
 
 Source order decides the representative. `Add(x, y)` and `Add(y, x)` are
-different keys. The pass never uses pointers, source-owner tokens, hashes
-without equality, or unordered operand sets as identity.
+different keys, as are `Mul(x, y)` and `Mul(y, x)`. Exact CSE retains operand
+order and performs no commutative rewrite. The pass never uses pointers,
+source-owner tokens, hashes without equality, or unordered operand sets as
+identity.
 
 Distinct source values named by graph outputs must remain distinct result
 values. Multiple labels of one source value must continue to alias one result
@@ -176,7 +188,7 @@ The pass deliberately does not perform any of the following:
 
 - dead-code elimination or input/constant CSE;
 - operand sorting, commutation, reassociation, or distribution;
-- `x + 0`, matrix identity, matrix zero, or constant folding;
+- `x + 0`, `x * 0`, `x * 1`, matrix identity, matrix zero, or constant folding;
 - signed-zero, subnormal, infinity, or NaN canonicalization;
 - `MatMul` reduction changes, FMA contraction, epilogue fusion, or operation
   motion;

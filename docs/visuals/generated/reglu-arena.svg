@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1320" height="600" viewBox="0 0 1320 600" role="img" aria-labelledby="title description">
+  <title id="title">TensorKiln ReGLU arena lifetime schedule</title>
+  <desc id="description">Six arena buffers parsed from the canonical plan reuse three 64-byte aligned slots across six kernel boundaries for a 192-byte workspace.</desc>
+  <rect width="100%" height="100%" rx="18" fill="#0d1117"/>
+  <text x="36" y="48" fill="#f0f6fc" font-family="system-ui, sans-serif" font-size="24" font-weight="700">Arena lifetimes · 192 B verified workspace</text>
+  <text x="36" y="76" fill="#8b949e" font-family="system-ui, sans-serif" font-size="12">EXACT OFFSETS + HALF-OPEN LIVE INTERVALS FROM INSPECT JSON</text>
+  <line x1="230" y1="118" x2="230" y2="500" stroke="#30363d" stroke-width="1"/>
+  <text x="230" y="108" text-anchor="middle" fill="#8b949e" font-family="ui-monospace, monospace" font-size="11">@0</text>
+  <line x1="390" y1="118" x2="390" y2="500" stroke="#30363d" stroke-width="1"/>
+  <text x="390" y="108" text-anchor="middle" fill="#8b949e" font-family="ui-monospace, monospace" font-size="11">@1</text>
+  <line x1="550" y1="118" x2="550" y2="500" stroke="#30363d" stroke-width="1"/>
+  <text x="550" y="108" text-anchor="middle" fill="#8b949e" font-family="ui-monospace, monospace" font-size="11">@2</text>
+  <line x1="710" y1="118" x2="710" y2="500" stroke="#30363d" stroke-width="1"/>
+  <text x="710" y="108" text-anchor="middle" fill="#8b949e" font-family="ui-monospace, monospace" font-size="11">@3</text>
+  <line x1="870" y1="118" x2="870" y2="500" stroke="#30363d" stroke-width="1"/>
+  <text x="870" y="108" text-anchor="middle" fill="#8b949e" font-family="ui-monospace, monospace" font-size="11">@4</text>
+  <line x1="1030" y1="118" x2="1030" y2="500" stroke="#30363d" stroke-width="1"/>
+  <text x="1030" y="108" text-anchor="middle" fill="#8b949e" font-family="ui-monospace, monospace" font-size="11">@5</text>
+  <line x1="1190" y1="118" x2="1190" y2="500" stroke="#30363d" stroke-width="1"/>
+  <text x="1190" y="108" text-anchor="middle" fill="#8b949e" font-family="ui-monospace, monospace" font-size="11">@6</text>
+  <text x="36" y="205" fill="#c9d1d9" font-family="ui-monospace, monospace" font-size="13" font-weight="700">offset   0</text>
+  <rect x="230" y="178" width="960" height="54" rx="7" fill="#161b22" stroke="#30363d"/>
+  <text x="36" y="329" fill="#c9d1d9" font-family="ui-monospace, monospace" font-size="13" font-weight="700">offset  64</text>
+  <rect x="230" y="302" width="960" height="54" rx="7" fill="#161b22" stroke="#30363d"/>
+  <text x="36" y="453" fill="#c9d1d9" font-family="ui-monospace, monospace" font-size="13" font-weight="700">offset 128</text>
+  <rect x="230" y="426" width="960" height="54" rx="7" fill="#161b22" stroke="#30363d"/>
+  <rect x="233" y="197" width="314" height="16" rx="4" fill="#58a6ff" fill-opacity="0.35" stroke="#58a6ff"/>
+  <text x="241" y="209" fill="#f0f6fc" font-family="ui-monospace, monospace" font-size="10">#b0 · 32/64 B · [0,2)</text>
+  <rect x="393" y="321" width="314" height="16" rx="4" fill="#d2a8ff" fill-opacity="0.35" stroke="#d2a8ff"/>
+  <text x="401" y="333" fill="#f0f6fc" font-family="ui-monospace, monospace" font-size="10">#b1 · 32/64 B · [1,3)</text>
+  <rect x="553" y="197" width="634" height="16" rx="4" fill="#f2cc60" fill-opacity="0.35" stroke="#f2cc60"/>
+  <text x="561" y="209" fill="#f0f6fc" font-family="ui-monospace, monospace" font-size="10">#b2 · 32/64 B · [2,6)</text>
+  <rect x="713" y="321" width="314" height="16" rx="4" fill="#7ee787" fill-opacity="0.35" stroke="#7ee787"/>
+  <text x="721" y="333" fill="#f0f6fc" font-family="ui-monospace, monospace" font-size="10">#b3 · 32/64 B · [3,5)</text>
+  <rect x="873" y="445" width="314" height="16" rx="4" fill="#58a6ff" fill-opacity="0.35" stroke="#58a6ff"/>
+  <text x="881" y="457" fill="#f0f6fc" font-family="ui-monospace, monospace" font-size="10">#b4 · 32/64 B · [4,6)</text>
+  <rect x="1033" y="321" width="154" height="16" rx="4" fill="#d2a8ff" fill-opacity="0.35" stroke="#d2a8ff"/>
+  <text x="1041" y="333" fill="#f0f6fc" font-family="ui-monospace, monospace" font-size="10">#b5 · 32/64 B · [5,6)</text>
+  <text x="36" y="554" fill="#7ee787" font-family="system-ui, sans-serif" font-size="13" font-weight="700">Boundary reuse: #b0→#b2, #b1→#b3→#b5</text>
+  <text x="1284" y="554" text-anchor="end" fill="#8b949e" font-family="system-ui, sans-serif" font-size="11">6 × 32 B payloads · 3 × 64 B aligned slots</text>
+</svg>

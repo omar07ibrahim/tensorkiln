@@ -42,14 +42,21 @@ All current values use dense row-major `f32` layouts. Inputs are external,
 constants remain plan-owned and external to the arena, and every computed
 result has arena storage. The current kernel selection is exact:
 
-| Source operation | Verified kernel |
-| --- | --- |
-| `Add` with two operands matching the output shape | `add_contiguous_f32` |
-| broadcasting `Add` | `add_broadcast_f32` |
-| `MatMul` with two rank-2 operands and a rank-2 result | `matmul_rank2_f32` |
-| every other valid rank-2 through rank-4 `MatMul` | `matmul_batched_f32` |
-| `Relu` | `relu_contiguous_f32` |
-| `Softmax` whose canonical axis is the final axis | `softmax_last_axis_f32` |
+| Ordinal | Source operation | Verified kernel |
+| ---: | --- | --- |
+| 0 | `Add` with two operands matching the output shape | `add_contiguous_f32` |
+| 1 | broadcasting `Add` | `add_broadcast_f32` |
+| 2 | `MatMul` with two rank-2 operands and a rank-2 result | `matmul_rank2_f32` |
+| 3 | every other valid rank-2 through rank-4 `MatMul` | `matmul_batched_f32` |
+| 4 | `Relu` | `relu_contiguous_f32` |
+| 5 | `Softmax` whose canonical axis is the final axis | `softmax_last_axis_f32` |
+| 6 | `Mul` with two operands matching the output shape | `mul_contiguous_f32` |
+| 7 | broadcasting `Mul` | `mul_broadcast_f32` |
+
+The two Mul variants were appended at public `DenseKernelKind` ordinals 6 and
+7; the existing ordinals 0 through 5 were not renumbered. Compiler selection
+and reverse verification independently distinguish equal-shape from broadcast
+Mul exactly as they do for Add.
 
 Axis-aware `Softmax` remains valid graph IR for every rank-valid axis and is
 executable through the reference interpreter. The optimized compiler and
@@ -148,11 +155,13 @@ The executor never changes these modes. `unsupported_rounding_mode`,
 `unsupported_binary64_precision`, and `unsupported_subnormal_mode` identify the
 failed requirement. A failed run publishes no result.
 
-`Add` and `Relu` follow the same ordinary binary32 paths as the independent
-interpreter. Both `MatMul` kernels visit the reduction dimension in increasing
-order, multiply and accumulate in binary64, round every reduction step to
-binary64 on targets whose evaluation format is wider, and convert once to
-binary32 at the output boundary. Fused contraction is disabled by the build.
+`Add`, `Mul`, and `Relu` follow the same ordinary binary32 paths as the
+independent interpreter. Both contiguous and broadcasting Mul perform one
+ordinary binary32 multiplication per output after applying the verified dense
+broadcast mapping. Both `MatMul` kernels visit the reduction dimension in
+increasing order, multiply and accumulate in binary64, round every reduction
+step to binary64 on targets whose evaluation format is wider, and convert once
+to binary32 at the output boundary. Fused contraction is disabled by the build.
 
 `softmax_last_axis_f32` visits contiguous slices and coordinates in increasing
 row-major order. It applies the documented NaN, positive-infinity, and
@@ -191,7 +200,7 @@ release-profile allocation executable wraps global `new`/`new[]` and the C
 `malloc`, `calloc`, `realloc`, `aligned_alloc`, and `posix_memalign` entry
 points. With the counter armed, it executes:
 
-- the first and a repeated run after session creation and binding for the five
+- the first and a repeated run after session creation and binding for the seven
   algebraic kernel kinds;
 - a cold non-foldable `std::exp(0)` initialization during Softmax session
   creation, before the measured boundary;
@@ -210,12 +219,72 @@ library, cold transcendental-library initialization, or user callbacks.
 The deterministic suite includes hand-calculated fixtures, exact diagnostic
 boundaries, regular and audited sessions, lifetime invalidation, outer-guard
 and in-arena fault injection, and a seeded corpus of 128 DAGs. The corpus uses
-audited sessions while exercising the five algebraic kernels, arena reuse, and
+audited sessions while exercising the seven algebraic kernels, arena reuse, and
 raw-bit output agreement with the independently implemented
 `ReferenceInterpreter`. A separate seeded last-axis Softmax corpus uses the
 documented tolerance, normalized-slice checks, and translation invariance; it
-does not extend the five-kernel raw-bit claim across `std::exp`
+does not extend the seven-kernel raw-bit claim across `std::exp`
 implementations.
+
+### Runnable ReGLU boundary
+
+The bounded CLI's fixed `reglu_mlp_v1` workload composes the public graph, plan,
+session, result-view, and independent-reference APIs. It is a compiled-in
+ReGLU-style MLP fixture, not a full transformer, graph or model-file importer,
+or general model runner.
+
+[![Canonical six-step TensorKiln ReGLU execution graph](visuals/generated/reglu-graph.svg)](visuals/generated/reglu-graph.svg)
+
+The source-derived plan contains 11 values, one input, four constants occupying
+128 bytes, six kernel steps, one output, 80 scalar steps, and a 192-byte logical
+workspace. Its exact sequence is
+`matmul_rank2_f32 -> add_broadcast_f32 -> relu_contiguous_f32 ->
+matmul_rank2_f32 -> add_broadcast_f32 -> mul_contiguous_f32`. Those six steps
+use four distinct kernel kinds. This fixture demonstrates
+`mul_contiguous_f32` only; the broader Mul evidence includes a scalar
+contiguous case, a rank-four broadcast case, verifier rejection, allocation
+checks, and seeded differential tests for `mul_broadcast_f32` at ordinal 7.
+
+[![Exact TensorKiln ReGLU arena lifetimes and reuse](visuals/generated/reglu-arena.svg)](visuals/generated/reglu-arena.svg)
+
+Each of the six arena values has a 32-byte payload and a 64-byte aligned
+reservation. The exact half-open lifetimes reuse offsets 0 and 64 at verified
+boundaries and use offset 128 only while both lower slots remain live, so six
+reservations occupy a 192-byte logical workspace. This is placement and
+lifetime evidence, not a minimum-workspace, allocation-efficiency, timing, or
+performance claim.
+
+[![All eight raw f32 words from audited TensorKiln ReGLU execution](visuals/generated/reglu-output.svg)](visuals/generated/reglu-output.svg)
+
+For the fixed six-word input, the plan publishes one `result: f32[2,4]` tensor
+containing exactly
+`[0x00000000, 0x40a00000, 0x41480000, 0x40180000, 0x80000000,
+0xc0f00000, 0x42040000, 0x00000000]`. All eight executor words match the
+independent interpreter bit for bit, the per-kernel write audit is enabled, and
+the signed negative zero at zero-based element 4 (the fifth word) is preserved.
+The 8/8 statement is limited to this workload and input-bit fixture; it is not
+an arbitrary-input or benchmark claim.
+
+The release CLI was replayed twice per command with byte-identical output. The
+complete sources are the
+[registry JSON](visuals/generated/cli-workloads.json) and
+[list text](visuals/generated/reglu-list.txt), the
+[inspect JSON](visuals/generated/reglu-inspect.json) and
+[inspect text](visuals/generated/reglu-inspect.txt), and the
+[execute JSON](visuals/generated/reglu-execute.json) and
+[execute text](visuals/generated/reglu-execute.txt). The
+[three-frame CLI presentation](visuals/generated/reglu-demo.gif),
+[static complete execute frame](visuals/generated/reglu-terminal.png), and
+[combined text transcript](visuals/generated/reglu-demo-transcript.txt) expose
+the same validated reports. GIF delays are deterministic presentation settings,
+not captured timings. The
+[v4 evidence manifest](visuals/generated/manifest.json) binds command,
+executable, source, generator, and artifact hashes while making no compiler,
+operating-system, binary-supply-chain, or network-isolation attestation.
+
+The committed-source gate independently rebuilds and replays this CLI contract
+from a validated `git archive` of committed `HEAD`; its exact boundary is
+documented under [CLI verification](cli.md#verification).
 
 ### Runnable Softmax boundary
 
@@ -256,9 +325,9 @@ The source revision is the latest commit touching that complete build-input
 set, rather than the later commit that stores the evidence itself. This avoids
 a self-referential manifest while still making source drift fail the
 byte-for-byte check. The manifest does not attest the compiler, operating
-system, binary supply chain, or network isolation. Its bit-exact statement is
-only about the five crafted slices printed in the panel; it is not an
-arbitrary-input, cross-libm, or performance claim.
+system, binary supply chain, or network isolation. The Softmax bit-exact
+statement within it is only about the five crafted slices printed in the panel;
+it is not an arbitrary-input, cross-libm, or performance claim.
 
 The full release suite is also executable as a real 32-bit i386/x87 gate on a
 multilib host:

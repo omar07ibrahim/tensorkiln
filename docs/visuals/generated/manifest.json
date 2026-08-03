@@ -1,31 +1,109 @@
 {
   "artifacts": {
     "arena-plan.txt": {
+      "bytes": 607,
+      "media_type": "text/plain; charset=utf-8",
       "sha256": "5cda0ab2cc42372c6991c2387aca6635212b35d7dbb2391d0af7895f2af1c0bb"
     },
     "arena-reuse.svg": {
+      "bytes": 5373,
+      "media_type": "image/svg+xml",
       "sha256": "9c0baf3fce1d27bc0fc085e360edac24a5e795d31dff75f0a75a2c547bd36088"
     },
     "cli-execute.json": {
+      "bytes": 1167,
+      "media_type": "application/json",
       "sha256": "2d74429690aa514770d5a137ebf958f8b475a5b1cb4425a36ae7a4e42566b86b"
     },
     "cli-execution.svg": {
+      "bytes": 6671,
+      "media_type": "image/svg+xml",
       "sha256": "d4f0933e2759a0be0181ec4b131fd2656092496f9dfc48ffd40caa4a07e87839"
     },
     "cli-inspect.json": {
+      "bytes": 1834,
+      "media_type": "application/json",
       "sha256": "bafba37b0c4ece4545ee011cdb904c070bcb456a5180ef1512b6b579340a8690"
     },
+    "cli-workloads.json": {
+      "bytes": 569,
+      "media_type": "application/json",
+      "sha256": "8ed8ce35c8925bce34f97677696a04e90f7ef24d27d4f447d5dbae76d6a230bc"
+    },
     "execute-graph.svg": {
+      "bytes": 4298,
+      "media_type": "image/svg+xml",
       "sha256": "b8e6741259a7b582da5f14f111a9d821ef0279e5736fb0ad9ee3da6b1b442e8e"
     },
     "execute-graph.txt": {
+      "bytes": 1265,
+      "media_type": "text/plain; charset=utf-8",
       "sha256": "831194f4d7019e85ba32c7e2355dfc49b4caa3f4b1ae7b9db47b75bdae85a2e4"
     },
     "execute-softmax.svg": {
+      "bytes": 3352,
+      "media_type": "image/svg+xml",
       "sha256": "2499cbb7ddd1877aeb040a0522deeab01ce4aff217c4af602b1289243c22f341"
     },
     "execute-softmax.txt": {
+      "bytes": 955,
+      "media_type": "text/plain; charset=utf-8",
       "sha256": "a8fde11bd37ec79801fd9c7d8f370501b2d4197dbd5816ff6f461c7469ae5898"
+    },
+    "reglu-arena.svg": {
+      "bytes": 4542,
+      "media_type": "image/svg+xml",
+      "sha256": "77e7bc07315a71eea560adba00c6da93fe09bd92fe3072f7502633c873b39ed6"
+    },
+    "reglu-demo-transcript.txt": {
+      "bytes": 3358,
+      "media_type": "text/plain; charset=utf-8",
+      "sha256": "689916a0363dd3847f389442f0618c26ce3c3d49bad18219a0a175f6b09aae8c"
+    },
+    "reglu-demo.gif": {
+      "bytes": 910859,
+      "media_type": "image/gif",
+      "sha256": "83093e983e25e3da5beb1c270aabfa33143b36d86093cfd4eb728bedf2b75ab7"
+    },
+    "reglu-execute.json": {
+      "bytes": 1454,
+      "media_type": "application/json",
+      "sha256": "05fa2c9eb78236547e49120fa216dd47ed3c0cfe385cc4ec164741af74009381"
+    },
+    "reglu-execute.txt": {
+      "bytes": 648,
+      "media_type": "text/plain; charset=utf-8",
+      "sha256": "e8ad4c040dc16b11b821eee8b6e744cd678a14bed35bbab2f950fe5c95aef896"
+    },
+    "reglu-graph.svg": {
+      "bytes": 7644,
+      "media_type": "image/svg+xml",
+      "sha256": "3dc49920d6fce88630aaf17e6e07315a5e4e42396c8123395cb30d592c049cc1"
+    },
+    "reglu-inspect.json": {
+      "bytes": 2785,
+      "media_type": "application/json",
+      "sha256": "87c703c0afded52b27b471d79db6279b43fe46edd6d8ff17b53d153c62305fb9"
+    },
+    "reglu-inspect.txt": {
+      "bytes": 2227,
+      "media_type": "text/plain; charset=utf-8",
+      "sha256": "4e1be8bb62d552abbf3846f07dcc1bd1e15e6fb3b798f101355e9224b1974a44"
+    },
+    "reglu-list.txt": {
+      "bytes": 244,
+      "media_type": "text/plain; charset=utf-8",
+      "sha256": "a188325697fdb238fc0ccbb43a85dc48a1c2f1d57696a0b23283ed323f91d29e"
+    },
+    "reglu-output.svg": {
+      "bytes": 4902,
+      "media_type": "image/svg+xml",
+      "sha256": "de47e1dbdffc8f08bcfe9c0595149bf10791287ddf9d251cff3494b2d2378ad4"
+    },
+    "reglu-terminal.png": {
+      "bytes": 1555923,
+      "media_type": "image/png",
+      "sha256": "23deec812799c1873a2a7c9333a830b33010ada4584d2763806beb1b7a566abd"
     }
   },
   "capture_contract": {
@@ -43,34 +121,39 @@
     "timeout_seconds": 30
   },
   "claim_boundary": [
-    "CLI execution evidence is limited to dense_relu_v1 and the six committed input-bit values; the CLI is not a graph or model-file importer",
-    "the release CLI was replayed twice per command with byte-identical JSON; the execute report enables kernel-write auditing and records 4/4 raw-f32-bit reference agreement",
+    "reglu_mlp_v1 is a fixed ReGLU-style compiled-in MLP fixture; it is not a full transformer, model importer, or graph-file importer",
+    "the fixed six-word input produces eight executor words with 8/8 raw-f32-bit independent-reference agreement, including exact preservation of negative zero",
+    "registry, inspect, execute, and text terminal evidence was replayed twice per command with byte-identical stdout",
+    "GIF frame delays are deterministic presentation settings, not captured timings, latency measurements, or benchmark results",
+    "the preserved v3 dense CLI evidence is limited to dense_relu_v1 and the six committed input-bit values; the CLI is not a graph or model-file importer",
+    "the preserved v3 dense CLI commands were replayed twice per command with byte-identical JSON; the dense execute report enables kernel-write auditing and records 4/4 raw-f32-bit reference agreement",
     "the CLI evidence contains no timing fields and is not a benchmark or performance claim",
     "execute_softmax is crafted five-slice correctness evidence with 20/20 executor-reference and 20/20 executor-fixture bit agreements",
     "the optimized last-axis kernel reports 60 scalar steps; the axis-zero reference path reports 80 total scalar steps and remains unsupported by the optimized planner",
     "the Softmax bit-exact claim is limited to the committed f32[5,4] fixture, not arbitrary finite inputs or libm implementations",
     "these deterministic correctness examples are not benchmarks or performance measurements",
-    "source blobs and captured executable bytes are hashed; the compiler, operating system, and binary supply chain are not attested"
+    "source blobs and captured executable bytes are hashed; the compiler, operating system, and binary supply chain are not attested",
+    "full-history checks authenticate recorded commit and tree objects; shallow checks bind current generator and source blob content but cannot authenticate unavailable historical Git objects"
   ],
   "generator": {
-    "bytes": 100379,
-    "commit": "8a745e298894aaa7aae87a58da501fc7ab9f54c7",
+    "bytes": 178434,
+    "commit": "04f6c6aa32019758d79fd3889aff8fb53de7aa37",
     "committed": true,
-    "git_blob": "086c8dc8155c4f33519cc789d9a6f1802bb0ca71",
+    "git_blob": "d9571f7af7f64e71446cc7a4cebbdae9fcf0b884",
     "path": "tools/render_readme_visuals.py",
-    "sha256": "6f2c5740cef94bb17e09b8003d757c1ef1331e897f58b2a00262ff177656ab6a",
-    "tree": "c819b45ab15ae85fc2cab3c9c31dcc29e4a33c37"
+    "sha256": "a0a3ea2370d931d5d49fecba93356ee9eb26412a8dde61d3de6aa6aa83d0c8e5",
+    "tree": "13cbdf0061c4adcbaa4dbd086ad0f68260687c7f"
   },
   "repository_source": {
-    "commit": "8a745e298894aaa7aae87a58da501fc7ab9f54c7",
+    "commit": "1606c944185198a85597142479311c62e9dccae7",
     "object_format": "sha1",
     "selection": "latest commit touching the complete evidence build-input set",
     "source_files": {
       "Makefile": {
-        "bytes": 8428,
-        "git_blob": "bae5218476034868b81857afb1453225ea7201b2",
+        "bytes": 8809,
+        "git_blob": "6150cfe558e1cecab22705df877d81c8e45ec138",
         "mode": "100644",
-        "sha256": "ec32b3d7bcfa248005fdeb51cb980eef878868698603332e7f1c361dbababb2d"
+        "sha256": "c053c8de31f50424f3ce62561730b2d2d02802c88339e361068f2e1644e0c21a"
       },
       "cli/tensorkiln.cpp": {
         "bytes": 823,
@@ -121,22 +204,22 @@
         "sha256": "c4a50223985e8b971b391402f372cdb4010593a0486ed36977a707b3c5af1594"
       },
       "include/tensorkiln/execution_plan.hpp": {
-        "bytes": 8229,
-        "git_blob": "1c676064a88d8db1f2a832f9ef0a9eb7616bcd04",
+        "bytes": 8272,
+        "git_blob": "06971b2fcf3187071b44faf0438377c970070606",
         "mode": "100644",
-        "sha256": "71f137bff71336de2eff8769ba2e75ad69948bee0e28a6feb8c829c2d26b41f7"
+        "sha256": "be03c310a35b51b4833eaea5eb7eea6800a553118f0d865c9b5558771d74d120"
       },
       "include/tensorkiln/graph.hpp": {
-        "bytes": 6727,
-        "git_blob": "9d5294dd00093530502c54ca9bb9327779b16b9a",
+        "bytes": 6840,
+        "git_blob": "16c8158ae6b40cc4c81c73fad90edd8db72bda0a",
         "mode": "100644",
-        "sha256": "47ca15b15ca090de4cd37fa21aef600d80f8415fb08aef746be0844b248e7048"
+        "sha256": "6c50f9f077617bb9f05f63bd226af389b5707d81c2879d8904f1e8b4d05a6174"
       },
       "include/tensorkiln/graph_arena.hpp": {
-        "bytes": 5235,
-        "git_blob": "0f527634f680a1ece8ab39cfcabd681eeec1fee3",
+        "bytes": 5245,
+        "git_blob": "1dad5e16353024204f16aac4cbe2d5fde741a45d",
         "mode": "100644",
-        "sha256": "f8a8d774347974bbcd553e15f9572868ec08fc74713b90c2faa4d65c65fb3c23"
+        "sha256": "1d7ddbb51c11263e1a9b65ff4cc531f4505dfc6f806072b46858e46a6167a7b3"
       },
       "include/tensorkiln/provenance.hpp": {
         "bytes": 2323,
@@ -223,10 +306,10 @@
         "sha256": "ad8183d4f7af60e7b4fdf85b523fb59515109019efdcd5a99a847102449bd373"
       },
       "src/cli_app.cpp": {
-        "bytes": 30153,
-        "git_blob": "76d8f1ff68f81f810ec1c93f66e939fc3b7683d8",
+        "bytes": 39361,
+        "git_blob": "1df81aa78070a50ae9d7f02400dd094b85f40445",
         "mode": "100644",
-        "sha256": "320947c430f607189a6c9cd3206ba23794063162a2c53d11c6c8e6b9556c0116"
+        "sha256": "3b5ab4b00ff325517f383b5d5c4c955e5538ee65110d3e8d998def3502d9611f"
       },
       "src/cli_app.hpp": {
         "bytes": 732,
@@ -235,10 +318,10 @@
         "sha256": "cf6f7ac0cfc25de5c1322c1c917d5f0b697db9f132faef5906e6acc8377d4b4b"
       },
       "src/compiler_support.cpp": {
-        "bytes": 8055,
-        "git_blob": "b6abfdcd5ec605d7455305fad18c83163b006bf9",
+        "bytes": 8328,
+        "git_blob": "b0871e0ac7edac485e9ad193ac2f82ea344e6066",
         "mode": "100644",
-        "sha256": "4958ef2fd986023c582f870acd4d64dce17e603cb33b68e80e8071f979ebe124"
+        "sha256": "9154cff1df3f586e212ff06b53272552bf666e50d5fcda074a745e27fb8dea63"
       },
       "src/compiler_support.hpp": {
         "bytes": 969,
@@ -271,10 +354,10 @@
         "sha256": "e67182aed37c9c37ff27b90d28863f757bda5dbc4cc2e47dd551d9a3d3ccd383"
       },
       "src/execution_kernels.cpp": {
-        "bytes": 16060,
-        "git_blob": "1af3626269ca4c5c51b1184b9b88ec0c0a0b9ce4",
+        "bytes": 18301,
+        "git_blob": "2618de4bdbb3e1a3cbc200458cb529d945646d35",
         "mode": "100644",
-        "sha256": "be7a64a64392a99c3cfada61291d60090b1c6a095d533e9cb217188bbe6b65ec"
+        "sha256": "15674c1cbc0017485c77fe6a21fd31d83a1dfa7b192d3b1841ea418885c49397"
       },
       "src/execution_kernels.hpp": {
         "bytes": 684,
@@ -283,22 +366,22 @@
         "sha256": "750c325001a823c003d7d81c996887544c9e7b622c2dc0d12a188c2806e56025"
       },
       "src/execution_plan.cpp": {
-        "bytes": 7808,
-        "git_blob": "d02320e6564ccb3767f1016d5b8fb198cbe996af",
+        "bytes": 7968,
+        "git_blob": "9f5423fb76c40303d862c03c721e86ef955cb586",
         "mode": "100644",
-        "sha256": "00091fc84e13abb47c8459023f3fa95e105a582d195cf887c51deb3d99c66400"
+        "sha256": "0a5a6e92509b36dd72691365977e8f05fd3800afa50b8389b46d8a7c6774ef87"
       },
       "src/execution_plan_compiler.cpp": {
-        "bytes": 5450,
-        "git_blob": "9c1db5f51f3bc58d91a9df10f7426799bc3ee965",
+        "bytes": 6055,
+        "git_blob": "27cc263612d41a7dfa807e687be65e7173af9a80",
         "mode": "100644",
-        "sha256": "e02aa5648d1f27926ceaca6099b1b87bcf6025bf73927942cd49075d2029c042"
+        "sha256": "5edecb0f7f36388a15752bbada3e4f1f82606f3409a8cb3e48e1755cf222560d"
       },
       "src/execution_plan_support.cpp": {
-        "bytes": 12374,
-        "git_blob": "c99b1c87e8d2ed6da3e60f2ba6747efdc47ff79b",
+        "bytes": 12524,
+        "git_blob": "8ba379871c2879187e802043a9004f0dba3672d6",
         "mode": "100644",
-        "sha256": "0268a7e0d618bd79bb9b4ec3466818d2399fcacec4739dd0af7134f75e864ff6"
+        "sha256": "c4f4971f3f37049f54c076112d1fad2a91777317fe62925a1e39f893916921c2"
       },
       "src/execution_plan_support.hpp": {
         "bytes": 1006,
@@ -307,10 +390,10 @@
         "sha256": "1988ed2602cdd1dbc78b503db617eb9423591ec8394380db0d700f67bb89343f"
       },
       "src/execution_plan_verifier.cpp": {
-        "bytes": 14254,
-        "git_blob": "c6000740b1b971e5c30094cb9021cd02a5f46251",
+        "bytes": 14993,
+        "git_blob": "7ef9ad213493414c7153c3a82dfc5e7b4a2c36ff",
         "mode": "100644",
-        "sha256": "e1dcf040a409e9f94682aff6e39556df26032fd9cc25e122c02ceead0e355e3e"
+        "sha256": "2a447c4ccf167c230aa4e32af7e3202be6dd6781933b509fc09085453db52c49"
       },
       "src/float_bits.hpp": {
         "bytes": 424,
@@ -319,10 +402,10 @@
         "sha256": "b49d83de3108ab7508b09ad55ba4ccd85c449f2a8c42f9060b2f8c43356b3dc9"
       },
       "src/graph.cpp": {
-        "bytes": 18938,
-        "git_blob": "6ea681b065b1a0e854c2565114df37fb01789a8b",
+        "bytes": 20146,
+        "git_blob": "273215f2a27e3ca84c1bc6e0c6310c8a77273035",
         "mode": "100644",
-        "sha256": "e58a3a3a36ec02c70af6d54014ba9263ce547a0468a3658f34402fbe63b1bdb8"
+        "sha256": "1573f5cc1c3dfff0820ecb29323f8b6d94fc919f248eac4f90a298fd4a15dc4f"
       },
       "src/graph_arena.cpp": {
         "bytes": 3067,
@@ -331,10 +414,10 @@
         "sha256": "3c741cc863b0904080f5080398e5b63ee7303cec91e986218eca7ced44874ea1"
       },
       "src/graph_arena_lowering.cpp": {
-        "bytes": 13339,
-        "git_blob": "d12d1e0b6fce1d1d35361bb8e48df8024415914b",
+        "bytes": 13417,
+        "git_blob": "b41790a1b524ce3df83e77c8d2c78df6b502ddc5",
         "mode": "100644",
-        "sha256": "992411c16b96741a845618d87ce21145d982c1dafc336ed4bb83fe5f3ba2dd7d"
+        "sha256": "6e7aa41709d997ac1feaa21138e1cf69b31a8f39e79e9490e75fa820eeea13d0"
       },
       "src/graph_arena_lowering_internal.hpp": {
         "bytes": 475,
@@ -343,10 +426,10 @@
         "sha256": "3959484b4a4a9d14bc537993db10e50b6798ddae11cb7b919c4b71e683411859"
       },
       "src/graph_arena_verifier.cpp": {
-        "bytes": 9617,
-        "git_blob": "f55d22c3c12969d9e512ba9fe93c15d3b2671fcd",
+        "bytes": 9695,
+        "git_blob": "c11b1d64f2fec35c857b201e87c3063fc0f74cbd",
         "mode": "100644",
-        "sha256": "4afea27d3a112bd43e896e64cd7ada226136bdddffaa48f479aa2224cf39e096"
+        "sha256": "95f800f9061d679c3d097f5e77f938928eecaef764734a2dc9dda5b74290d1ce"
       },
       "src/provenance.cpp": {
         "bytes": 9557,
@@ -355,10 +438,10 @@
         "sha256": "616d05f96afa510522d011f51a6030430c4529a8df0c8736729d6223338a1f84"
       },
       "src/reference.cpp": {
-        "bytes": 25366,
-        "git_blob": "11eb671dcbdc8589a53491437406ce877e935473",
+        "bytes": 26821,
+        "git_blob": "75427f5ecdd5ed87f7123915ec0a5e1879777a65",
         "mode": "100644",
-        "sha256": "f9cc2057fe5861fbfc133b9ed57cd77485e8d88a263bec8295d869c25f6030d1"
+        "sha256": "e32f31704a522bccedea0e673399c58b13ec557ef7077599640c4eb7d71f6c6a"
       },
       "src/shape.cpp": {
         "bytes": 3221,
@@ -373,10 +456,10 @@
         "sha256": "096fcded57d5e7326ccddd197f83edc9e738255d671f6f88e5931243415f6793"
       },
       "src/structural_canonicalization.cpp": {
-        "bytes": 20713,
-        "git_blob": "219e50f3a1ada8ad045fcd69ee6cabc8fb4fc0db",
+        "bytes": 20810,
+        "git_blob": "b1b8a8250698d0b9ab31b4376dd2cbdd92733338",
         "mode": "100644",
-        "sha256": "e1b48771084c5b25272dabbc7b36a77f4cc0ecf8fe3d914b0031e7444f48c8a0"
+        "sha256": "73478740ac009f05e307030f163eed82d56f5c8fe6e0a57d6792f5b5c000795e"
       },
       "src/tensor_type.cpp": {
         "bytes": 2626,
@@ -385,25 +468,25 @@
         "sha256": "a713c2551805adeb01edf50f5cd0b13be90b7220b75133abe1d331d62f5d41ec"
       }
     },
-    "tree": "c819b45ab15ae85fc2cab3c9c31dcc29e4a33c37"
+    "tree": "d623f38d83b5f85a4579a9894bdc37b262a75fe7"
   },
   "reproduce": [
     "make -j2 PROFILE=release visuals",
     "make PROFILE=release visuals-check"
   ],
-  "schema": "tensorkiln.readme-visual-evidence.v3",
+  "schema": "tensorkiln.readme-visual-evidence.v4",
   "scope": "verified deterministic examples; not benchmarks",
   "sources": {
     "execute_graph": {
       "binary": "execute_graph",
-      "binary_bytes": 669408,
-      "binary_sha256": "49a6fca05af37d44ec6e5fae4a726e386a79d3908f77a24e18b85d19bf90b776",
+      "binary_bytes": 673944,
+      "binary_sha256": "e33d2dea494d3b1870e6e2fd244bf309c406289ffc49371b2a31d68d8ceb18be",
       "stdout_sha256": "831194f4d7019e85ba32c7e2355dfc49b4caa3f4b1ae7b9db47b75bdae85a2e4"
     },
     "execute_softmax": {
       "binary": "execute_softmax",
-      "binary_bytes": 670056,
-      "binary_sha256": "43c32bc1559d232fb981792aea222c325d139c225cf33a9f13d2da54d7bca341",
+      "binary_bytes": 674592,
+      "binary_sha256": "bdbe9e653fcfd39c4449c605f3867a780374f6fda6127ed40e874a8a57408bf9",
       "fixture": "crafted f32[5,4] policy slices",
       "stdout_sha256": "a8fde11bd37ec79801fd9c7d8f370501b2d4197dbd5816ff6f461c7469ae5898"
     },
@@ -415,8 +498,8 @@
     },
     "tensorkiln": {
       "binary": "tensorkiln",
-      "binary_bytes": 722648,
-      "binary_sha256": "c2bf2b94571984122ba41908f2994a52418ae6cbcb8a82f96411049b49f4eb84",
+      "binary_bytes": 745696,
+      "binary_sha256": "c9eb88f5138909ae7e9ac463aeb8d6e7e197d7716e67000f6590194dea98d594",
       "commands": {
         "execute": {
           "arguments": [
@@ -445,7 +528,91 @@
           "schema": "tensorkiln.cli.inspect.v1",
           "stdout_artifact": "cli-inspect.json",
           "stdout_sha256": "bafba37b0c4ece4545ee011cdb904c070bcb456a5180ef1512b6b579340a8690"
+        },
+        "reglu_execute_json": {
+          "arguments": [
+            "execute",
+            "--workload",
+            "reglu_mlp_v1",
+            "--input-bits",
+            "x=0x3f800000,0x40000000,0x40400000,0xbf800000,0x3f000000,0x40800000",
+            "--format=json"
+          ],
+          "byte_identical": true,
+          "replays": 2,
+          "schema": "tensorkiln.cli.execute.v1",
+          "stdout_artifact": "reglu-execute.json",
+          "stdout_sha256": "05fa2c9eb78236547e49120fa216dd47ed3c0cfe385cc4ec164741af74009381"
+        },
+        "reglu_execute_text": {
+          "arguments": [
+            "execute",
+            "--workload",
+            "reglu_mlp_v1",
+            "--input-bits",
+            "x=0x3f800000,0x40000000,0x40400000,0xbf800000,0x3f000000,0x40800000"
+          ],
+          "byte_identical": true,
+          "replays": 2,
+          "schema": "text/plain",
+          "stdout_artifact": "reglu-execute.txt",
+          "stdout_sha256": "e8ad4c040dc16b11b821eee8b6e744cd678a14bed35bbab2f950fe5c95aef896"
+        },
+        "reglu_inspect_json": {
+          "arguments": [
+            "inspect",
+            "--workload",
+            "reglu_mlp_v1",
+            "--format=json"
+          ],
+          "byte_identical": true,
+          "replays": 2,
+          "schema": "tensorkiln.cli.inspect.v1",
+          "stdout_artifact": "reglu-inspect.json",
+          "stdout_sha256": "87c703c0afded52b27b471d79db6279b43fe46edd6d8ff17b53d153c62305fb9"
+        },
+        "reglu_inspect_text": {
+          "arguments": [
+            "inspect",
+            "--workload",
+            "reglu_mlp_v1"
+          ],
+          "byte_identical": true,
+          "replays": 2,
+          "schema": "text/plain",
+          "stdout_artifact": "reglu-inspect.txt",
+          "stdout_sha256": "4e1be8bb62d552abbf3846f07dcc1bd1e15e6fb3b798f101355e9224b1974a44"
+        },
+        "reglu_list_json": {
+          "arguments": [
+            "list",
+            "--format=json"
+          ],
+          "byte_identical": true,
+          "replays": 2,
+          "schema": "tensorkiln.cli.workloads.v1",
+          "stdout_artifact": "cli-workloads.json",
+          "stdout_sha256": "8ed8ce35c8925bce34f97677696a04e90f7ef24d27d4f447d5dbae76d6a230bc"
+        },
+        "reglu_list_text": {
+          "arguments": [
+            "list"
+          ],
+          "byte_identical": true,
+          "replays": 2,
+          "schema": "text/plain",
+          "stdout_artifact": "reglu-list.txt",
+          "stdout_sha256": "a188325697fdb238fc0ccbb43a85dc48a1c2f1d57696a0b23283ed323f91d29e"
         }
+      },
+      "presentation": {
+        "gif_delay_centiseconds": [
+          90,
+          120,
+          170
+        ],
+        "timing_semantics": "presentation only; not measurements",
+        "transcript_artifact": "reglu-demo-transcript.txt"
       }
     }
   }

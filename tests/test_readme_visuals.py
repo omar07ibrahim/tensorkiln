@@ -1270,6 +1270,23 @@ class CliEvidenceTests(unittest.TestCase):
 
 
 class RegluVisualEvidenceTests(unittest.TestCase):
+    def test_terminal_tail_starts_at_a_complete_canonical_line(self) -> None:
+        lines = visuals._terminal_frame_lines(
+            visuals._display_cli_command(visuals.REGLU_INSPECT_TEXT_ARGUMENTS),
+            REGLU_INSPECT_TEXT_STDOUT,
+            73,
+            24,
+            tail=True,
+        )
+
+        self.assertEqual(len(lines), 23)
+        self.assertEqual(
+            lines[0],
+            "    %9 f32[2,4] dense strides=[4,1] storage=arena "
+            "#b4 offset=128",
+        )
+        self.assertEqual(lines[-1], "}")
+
     def test_exact_contract_drives_graph_arena_output_and_terminal_media(
         self,
     ) -> None:
@@ -1325,6 +1342,7 @@ class RegluVisualEvidenceTests(unittest.TestCase):
             "mul_contiguous",
             "%5,%9",
             "80 scalar steps",
+            "Constants %1/%3/%6/%8 are omitted",
             "NOT A FULL TRANSFORMER",
         ):
             self.assertIn(expected, graph)
@@ -1810,6 +1828,18 @@ class RegluVisualEvidenceTests(unittest.TestCase):
                 for claim in manifest["claim_boundary"]
             )
         )
+        self.assertTrue(
+            any(
+                "preserved v3 dense CLI evidence" in claim
+                for claim in manifest["claim_boundary"]
+            )
+        )
+        self.assertTrue(
+            any(
+                "shallow checks bind current generator" in claim
+                for claim in manifest["claim_boundary"]
+            )
+        )
 
     def test_output_io_rejects_symlinks_and_reports_orphans(self) -> None:
         build_dir = REPOSITORY_ROOT / "build"
@@ -1937,6 +1967,51 @@ class RegluVisualEvidenceTests(unittest.TestCase):
 
 
 class SourceProvenanceTests(unittest.TestCase):
+    def test_shallow_generator_provenance_binds_current_blob_content(
+        self,
+    ) -> None:
+        payload = b"committed renderer fixture\n"
+        git_blob = hashlib.sha1(
+            f"blob {len(payload)}\0".encode("ascii") + payload
+        ).hexdigest()
+        generator = {
+            "bytes": len(payload),
+            "commit": "1" * 40,
+            "committed": True,
+            "git_blob": git_blob,
+            "path": visuals.GENERATOR_PATH,
+            "sha256": hashlib.sha256(payload).hexdigest(),
+            "tree": "2" * 40,
+        }
+
+        with mock.patch.object(
+            visuals,
+            "_git_text",
+            side_effect=("sha1", "true"),
+        ), mock.patch.object(
+            visuals,
+            "_read_regular_file",
+            return_value=payload,
+        ):
+            self.assertEqual(
+                visuals._validate_recorded_generator(generator),
+                generator,
+            )
+
+        with mock.patch.object(
+            visuals,
+            "_git_text",
+            side_effect=("sha1", "true"),
+        ), mock.patch.object(
+            visuals,
+            "_read_regular_file",
+            return_value=payload + b"drift",
+        ), self.assertRaisesRegex(
+            visuals.VisualEvidenceError,
+            "shallow checkout generator differs",
+        ):
+            visuals._validate_recorded_generator(generator)
+
     def test_dirty_pathspec_scope_fails_before_source_discovery(self) -> None:
         with mock.patch.object(
             visuals,
@@ -2011,7 +2086,7 @@ class SourceProvenanceTests(unittest.TestCase):
 
 
 class CommittedVisualEvidenceTests(unittest.TestCase):
-    def test_v3_bundle_is_complete_safe_and_manifest_bound(self) -> None:
+    def test_v4_bundle_is_complete_safe_and_manifest_bound(self) -> None:
         evidence_dir = REPOSITORY_ROOT / "docs" / "visuals" / "generated"
         manifest_path = evidence_dir / "manifest.json"
 
@@ -2032,7 +2107,35 @@ class CommittedVisualEvidenceTests(unittest.TestCase):
             object_pairs_hook=reject_duplicate_keys,
         )
         self.assertEqual(
-            manifest["schema"], "tensorkiln.readme-visual-evidence.v3"
+            manifest["schema"], "tensorkiln.readme-visual-evidence.v4"
+        )
+        expected_artifacts = {
+            "arena-plan.txt",
+            "arena-reuse.svg",
+            "cli-execute.json",
+            "cli-execution.svg",
+            "cli-inspect.json",
+            "cli-workloads.json",
+            "execute-graph.svg",
+            "execute-graph.txt",
+            "execute-softmax.svg",
+            "execute-softmax.txt",
+            "reglu-arena.svg",
+            "reglu-demo-transcript.txt",
+            "reglu-demo.gif",
+            "reglu-execute.json",
+            "reglu-execute.txt",
+            "reglu-graph.svg",
+            "reglu-inspect.json",
+            "reglu-inspect.txt",
+            "reglu-list.txt",
+            "reglu-output.svg",
+            "reglu-terminal.png",
+        }
+        self.assertEqual(set(manifest["artifacts"]), expected_artifacts)
+        self.assertEqual(
+            {path.name for path in evidence_dir.iterdir() if path.is_file()},
+            expected_artifacts | {"manifest.json"},
         )
         self.assertTrue(manifest["generator"]["committed"])
         self.assertRegex(
@@ -2106,7 +2209,20 @@ class CommittedVisualEvidenceTests(unittest.TestCase):
         for filename, record in manifest["artifacts"].items():
             payload = (evidence_dir / filename).read_bytes()
             self.assertEqual(
+                set(record), {"bytes", "media_type", "sha256"}
+            )
+            self.assertEqual(record["bytes"], len(payload))
+            self.assertEqual(
+                record["media_type"],
+                visuals._artifact_media_type(filename),
+            )
+            self.assertEqual(
                 hashlib.sha256(payload).hexdigest(), record["sha256"]
+            )
+        for filename, expected_sha256 in PUBLISHED_V3_SHA256.items():
+            self.assertEqual(
+                manifest["artifacts"][filename]["sha256"],
+                expected_sha256,
             )
 
         transcript_path = evidence_dir / "execute-softmax.txt"
@@ -2162,25 +2278,106 @@ class CommittedVisualEvidenceTests(unittest.TestCase):
         visuals.reject_unsafe_text("committed CLI inspect JSON", inspect)
         visuals.reject_unsafe_text("committed CLI execute JSON", execute)
 
+        reglu_outputs = {
+            "reglu_list_json": (
+                visuals.REGLU_LIST_ARGUMENTS,
+                "tensorkiln.cli.workloads.v1",
+                "cli-workloads.json",
+            ),
+            "reglu_list_text": (
+                visuals.REGLU_LIST_TEXT_ARGUMENTS,
+                "text/plain",
+                "reglu-list.txt",
+            ),
+            "reglu_inspect_json": (
+                visuals.REGLU_INSPECT_ARGUMENTS,
+                "tensorkiln.cli.inspect.v1",
+                "reglu-inspect.json",
+            ),
+            "reglu_inspect_text": (
+                visuals.REGLU_INSPECT_TEXT_ARGUMENTS,
+                "text/plain",
+                "reglu-inspect.txt",
+            ),
+            "reglu_execute_json": (
+                visuals.REGLU_EXECUTE_ARGUMENTS,
+                "tensorkiln.cli.execute.v1",
+                "reglu-execute.json",
+            ),
+            "reglu_execute_text": (
+                visuals.REGLU_EXECUTE_TEXT_ARGUMENTS,
+                "text/plain",
+                "reglu-execute.txt",
+            ),
+        }
+        reglu_stdout = {
+            name: (evidence_dir / artifact).read_text(encoding="ascii")
+            for name, (_arguments, _schema, artifact) in reglu_outputs.items()
+        }
+        visuals.validate_reglu_evidence(
+            reglu_stdout["reglu_list_json"],
+            reglu_stdout["reglu_inspect_json"],
+            reglu_stdout["reglu_execute_json"],
+            reglu_stdout["reglu_list_text"],
+            reglu_stdout["reglu_inspect_text"],
+            reglu_stdout["reglu_execute_text"],
+        )
+        for label, stdout in reglu_stdout.items():
+            visuals.reject_unsafe_text(f"committed {label}", stdout)
+
+        for filename in (
+            "reglu-graph.svg",
+            "reglu-arena.svg",
+            "reglu-output.svg",
+        ):
+            rendered = (evidence_dir / filename).read_text(encoding="utf-8")
+            ElementTree.fromstring(rendered)
+            visuals.reject_unsafe_text(f"committed {filename}", rendered)
+            self.assertNotIn("<script", rendered.lower())
+            self.assertNotIn("<image", rendered.lower())
+            self.assertNotIn(" href=", rendered.lower())
+        self.assertTrue(
+            (evidence_dir / "reglu-terminal.png")
+            .read_bytes()
+            .startswith(b"\x89PNG\r\n\x1a\n")
+        )
+        self.assertTrue(
+            (evidence_dir / "reglu-demo.gif").read_bytes().startswith(
+                b"GIF89a"
+            )
+        )
+
         cli_source = manifest["sources"]["tensorkiln"]
         self.assertEqual(cli_source["binary"], "tensorkiln")
         self.assertRegex(cli_source["binary_sha256"], r"^[0-9a-f]{64}$")
-        for command_name, arguments, artifact, stdout in (
-            (
-                "inspect",
+        expected_commands = {
+            "inspect": (
                 visuals.CLI_INSPECT_ARGUMENTS,
+                "tensorkiln.cli.inspect.v1",
                 "cli-inspect.json",
                 inspect,
             ),
-            (
-                "execute",
+            "execute": (
                 visuals.CLI_EXECUTE_ARGUMENTS,
+                "tensorkiln.cli.execute.v1",
                 "cli-execute.json",
                 execute,
             ),
-        ):
+            **{
+                name: (arguments, schema, artifact, reglu_stdout[name])
+                for name, (arguments, schema, artifact) in reglu_outputs.items()
+            },
+        }
+        self.assertEqual(set(cli_source["commands"]), set(expected_commands))
+        for command_name, (
+            arguments,
+            schema,
+            artifact,
+            stdout,
+        ) in expected_commands.items():
             command = cli_source["commands"][command_name]
             self.assertEqual(command["arguments"], list(arguments))
+            self.assertEqual(command["schema"], schema)
             self.assertEqual(command["stdout_artifact"], artifact)
             self.assertEqual(command["replays"], 2)
             self.assertTrue(command["byte_identical"])
@@ -2268,6 +2465,18 @@ class DocumentationAssetTests(unittest.TestCase):
             "docs/visuals/generated/cli-inspect.json",
             "docs/visuals/generated/cli-execute.json",
             "docs/visuals/generated/cli-execution.svg",
+            "docs/visuals/generated/cli-workloads.json",
+            "docs/visuals/generated/reglu-list.txt",
+            "docs/visuals/generated/reglu-inspect.json",
+            "docs/visuals/generated/reglu-inspect.txt",
+            "docs/visuals/generated/reglu-execute.json",
+            "docs/visuals/generated/reglu-execute.txt",
+            "docs/visuals/generated/reglu-graph.svg",
+            "docs/visuals/generated/reglu-arena.svg",
+            "docs/visuals/generated/reglu-output.svg",
+            "docs/visuals/generated/reglu-terminal.png",
+            "docs/visuals/generated/reglu-demo.gif",
+            "docs/visuals/generated/reglu-demo-transcript.txt",
             "docs/visuals/generated/manifest.json",
         ):
             self.assertIn(relative_path, readme)

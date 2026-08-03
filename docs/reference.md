@@ -1,10 +1,10 @@
 # Reference interpreter
 
 The reference interpreter is the executable semantics for the graph layer that
-exists today. It evaluates `Input`, `Constant`, broadcast `Add`, batched
-`MatMul`, `Relu`, and axis-aware `Softmax` in topological order. It deliberately
-owns a distinct contiguous `f32` payload for every graph node and does not call
-compiler passes, including dead-code elimination or structural
+exists today. It evaluates `Input`, `Constant`, broadcast `Add` and `Mul`,
+batched `MatMul`, `Relu`, and axis-aware `Softmax` in topological order. It
+deliberately owns a distinct contiguous `f32` payload for every graph node and
+does not call compiler passes, including dead-code elimination or structural
 canonicalization, optimized kernels, layout code, or the arena runtime.
 
 That separation makes it a correctness oracle, not a performance baseline.
@@ -80,7 +80,7 @@ scalar-step failures when both limits would reject a graph.
 | Field | Accounted quantity |
 | --- | --- |
 | `max_materialized_bytes` | Sum of `numel * 4` for every node, including inputs and constants. Each value is counted once even when several outputs alias it. |
-| `max_scalar_steps` | `numel` for each input copy, constant copy, `Add`, or `Relu`; `output_numel * K` for each `MatMul`; `3 * numel` for each `Softmax`. |
+| `max_scalar_steps` | `numel` for each input copy, constant copy, `Add`, `Mul`, or `Relu`; `output_numel * K` for each `MatMul`; `3 * numel` for each `Softmax`. |
 
 Both sums use checked `uint64_t` arithmetic and complete before tensor payload
 allocation. `ReferenceResult::materialized_bytes()` and `scalar_steps()` expose
@@ -125,13 +125,14 @@ invalid.
 | --- | --- |
 | `Input`, `Constant` | Copy each `f32` bit pattern exactly. |
 | `Add` | One ordinary `f32` addition per output after trailing-axis broadcast. |
+| `Mul` | One ordinary `f32` multiplication per output after trailing-axis broadcast. |
 | `MatMul` | Multiply and accumulate in fixed row-major `K` order using `double`, then round once to `f32` per output element. Batch prefixes broadcast from the right. |
 | `Relu` | Preserve positive values, positive infinity, positive subnormals, and quiet-NaN payloads; map negative values, negative infinity, and both signed zeros to positive zero. |
 | `Softmax` | Normalize independent slices along the canonical axis. Finite slices use a subtract-maximum algorithm, store each exponential rounded to `f32`, accumulate those rounded exponentials in fixed axis order using binary64, and round each quotient to `f32`. |
 
-`Add` and `MatMul` otherwise follow IEEE arithmetic. Intentional non-finite
-inputs can therefore produce non-finite outputs; execution does not convert
-those values into diagnostics.
+`Add`, `Mul`, and `MatMul` otherwise follow IEEE arithmetic. Intentional
+non-finite inputs can therefore produce non-finite outputs; execution does not
+convert those values into diagnostics.
 
 `Softmax` has an explicit slice-local non-finite policy, applied before the
 ordinary subtract-maximum path:
@@ -166,17 +167,30 @@ The C++ suite builds an actual `MatMul -> Add -> Relu` MLP and compares all
 three intermediate boundaries with that raw-bit fixture. A separate
 Python-stdlib fixture computes mathematical Softmax with 80-digit `Decimal`
 exponentials and anchors tolerance-based axis-aware examples without sharing
-TensorKiln code or inheriting the five-kernel bit claim.
+TensorKiln code or inheriting the seven-kernel bit claim.
 Separate adversarial cases cover unequal-rank broadcast padding, batched matrix
-indexing, double-only reduction behavior, foreign handles, output aliases,
+indexing, double-only reduction behavior, scalar contiguous Mul and rank-four
+Mul broadcasting, signed-zero multiplication, foreign handles, output aliases,
 Softmax axis traversal and non-finite slices, diagnostic precedence, and exact
 resource limits.
 
 The arena executor is implemented separately from this interpreter. Its seeded
-differential corpus exercises the five pre-existing algebraic kernel variants,
-arena reuse, and optional write auditing while requiring raw-bit output
-agreement with this reference path. Optimized last-axis `Softmax` is exercised
-by a separate tolerance, normalization, and translation-invariance corpus and
-does not extend that five-kernel raw-bit claim. See
+differential corpus exercises all seven algebraic kernel variants, arena reuse,
+and optional write auditing while requiring raw-bit output agreement with this
+reference path. Optimized last-axis `Softmax` is exercised by a separate
+tolerance, normalization, and translation-invariance corpus and does not extend
+that seven-kernel raw-bit claim. See
 [the execution contract](execution.md) for that runtime's distinct storage,
 lifetime, memory-integrity, and allocation guarantees.
+
+### Fixed ReGLU fixture
+
+The compiled-in `reglu_mlp_v1` evidence is one fixed ReGLU-style fixture, not a
+general model runner. Its plan has six steps using four distinct kernel kinds:
+`matmul_rank2_f32`, `add_broadcast_f32`, `relu_contiguous_f32`, and
+`mul_contiguous_f32`. For the documented six-word input it publishes exactly
+one `result: f32[2,4]` tensor, and all eight raw output words match this
+interpreter. The [eight-word output panel](visuals/generated/reglu-output.svg)
+is derived from the [captured execute JSON](visuals/generated/reglu-execute.json).
+The 8/8 receipt is scoped to that workload and input-bit fixture; it is not an
+arbitrary-input claim, benchmark, or numerical-performance claim.
