@@ -40,6 +40,9 @@ jobs:
           make --version
       - name: Build and test
         run: make -j2 PROFILE="${{ matrix.profile }}" test
+      - name: Verify committed source archive
+        if: matrix.cxx == 'g++-14' && matrix.profile == 'release'
+        run: make source-archive-check
 
   sanitizers:
     name: clang++-18 / asan+ubsan
