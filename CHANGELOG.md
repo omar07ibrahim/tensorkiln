@@ -12,9 +12,10 @@ in progress.
 
 ### Added
 
-- a bounded `tensorkiln` CLI that constructs a versioned dense workload through
-  the public graph and plan APIs, then emits deterministic text or
-  machine-readable plan inspection with typed, bounded error handling;
+- a bounded `tensorkiln` CLI with exactly two compiled-in workload IDs,
+  `dense_relu_v1` and `reglu_mlp_v1`, constructed through the public graph and
+  plan APIs and exposed through deterministic text or machine-readable plan
+  inspection with typed, bounded error handling;
 - audited CLI execution from exact raw `f32` bits, with mandatory per-kernel
   write checking, fail-closed run statuses, independently interpreted
   reference output, and publication only after complete bit agreement;
@@ -28,22 +29,27 @@ in progress.
   and a separate seeded tolerance corpus;
 - a typed optimized-plan rejection for reference-only operations and valid
   non-last-axis `Softmax`;
+- transactional, broadcast-aware `Mul` semantics through graph construction,
+  reference execution, rewrites, arena lowering, plan compilation, reverse
+  verification, audited execution, and seeded differential tests;
 - a move-only dense `ExecutionPlan`, produced from minimal kernel/placement
   decisions only after independent reconstruction of layouts, operands,
   storage, lifetimes, outputs, limits, and work accounting;
-- verified contiguous and broadcasting `Add`, rank-2 and batched `MatMul`, and
-  contiguous `Relu` kernels;
+- verified contiguous and broadcasting `Add` and `Mul`, rank-2 and batched
+  `MatMul`, contiguous `Relu`, and last-axis `Softmax` kernels: eight
+  `DenseKernelKind` values total, seven algebraic plus `Softmax`, with the two
+  appended `Mul` kinds fixed at public ordinals 6 and 7;
 - an `ExecutionSession` with a 64-byte-aligned workspace, guards around every
   non-empty workspace, persistent validated input bindings, stale-safe result
   lookup, and no published result after failure;
 - an optional preallocated per-kernel write-set audit that detects changes
   outside the exact output payload, including arena padding and reusable
   regions;
-- a seeded 128-DAG differential corpus covering all five algebraic kernels,
+- a seeded 128-DAG differential corpus covering all seven algebraic kernels,
   arena reuse, audited execution, and raw-bit agreement with the independent
   interpreter;
 - a release allocation probe covering C and C++ allocation entry points, all
-  five algebraic kernels plus warm last-axis Softmax, regular and audited
+  seven algebraic kernels plus warm last-axis Softmax, regular and audited
   sessions, zero-work execution, and both the first and repeated `run()` paths;
 - an audited executable example that prints its verified plan and requires
   exact agreement with independent reference execution;
@@ -56,7 +62,23 @@ in progress.
 - a v3 CLI evidence bundle that replays release `inspect` and `execute`
   commands twice, commits their complete JSON, derives an execution-workflow
   SVG from validated fields, and binds command, ELF, source, generator, and
-  artifact hashes.
+  artifact hashes;
+- a six-step `reglu_mlp_v1` fixture using four distinct selected kernel kinds
+  and publishing one `f32[2,4]` output tensor only after all eight raw words
+  match the independent interpreter; this fixture demonstrates
+  `mul_contiguous_f32`, not the separately tested broadcasting `Mul` path;
+- a v4 ReGLU evidence bundle with a real three-frame CLI GIF, static terminal
+  PNG, complete transcript, graph, arena, and output diagrams, replayed
+  text/JSON sources, a commit-bound manifest, and preserved v3 artifact
+  digests;
+- a fail-closed `source-archive-check` that validates a bounded committed-HEAD
+  `git archive` against tracked blob IDs and modes, builds the release CLI from
+  a private extraction, verifies the archived workload receipts, and emits a
+  canonical non-benchmark receipt without publishing the temporary archive;
+- a published GCC/LCOV production-source coverage snapshot with normalized
+  trace, complete test transcript, source-input hashes, independent total
+  validation, and explicit framing as an observation rather than a live badge,
+  release gate, benchmark, or quality score.
 
 ### Changed
 

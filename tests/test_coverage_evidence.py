@@ -54,6 +54,7 @@ def sample_transcript() -> str:
 === verified interval arena plan ===
 === verified dense execution plan ===
 === verified Softmax execution ===
+CLI integration: 3/3 checks passed
 [pass] first
 [pass] second
 
@@ -176,12 +177,13 @@ Summary coverage rate:
 
 
 class TranscriptTests(unittest.TestCase):
-    def test_transcript_requires_examples_and_exact_test_count(self) -> None:
-        transcript, count = coverage.validate_test_transcript(
+    def test_transcript_requires_examples_cli_and_exact_test_count(self) -> None:
+        transcript, count, cli_checks = coverage.validate_test_transcript(
             sample_transcript()
         )
 
         self.assertEqual(count, 2)
+        self.assertEqual(cli_checks, 3)
         self.assertTrue(
             transcript.startswith(
                 "$ make -s -j2 CXX=g++ PROFILE=coverage test\n"
@@ -190,18 +192,68 @@ class TranscriptTests(unittest.TestCase):
         self.assertTrue(transcript.endswith("2/2 tests passed\n"))
 
     def test_transcript_records_nondefault_compiler_and_jobs(self) -> None:
-        transcript, count = coverage.validate_test_transcript(
+        transcript, count, cli_checks = coverage.validate_test_transcript(
             sample_transcript(),
             jobs=3,
             compiler_label="g++-13",
         )
 
         self.assertEqual(count, 2)
+        self.assertEqual(cli_checks, 3)
         self.assertTrue(
             transcript.startswith(
                 "$ make -s -j3 CXX=g++-13 PROFILE=coverage test\n"
             )
         )
+
+    def test_transcript_rejects_missing_duplicate_or_failed_cli_summary(
+        self,
+    ) -> None:
+        cli_line = "CLI integration: 3/3 checks passed\n"
+        malformed = (
+            (
+                sample_transcript().replace(cli_line, ""),
+                "requires one CLI integration summary",
+            ),
+            (
+                sample_transcript().replace(cli_line, cli_line * 2),
+                "requires one CLI integration summary",
+            ),
+            (
+                sample_transcript().replace("3/3 checks", "2/3 checks"),
+                "CLI integration checks did not pass completely",
+            ),
+            (
+                sample_transcript().replace("3/3 checks", "0/0 checks"),
+                "CLI integration checks did not pass completely",
+            ),
+            (
+                sample_transcript().replace(
+                    "CLI integration: 3/3 checks passed",
+                    "CLI integration: 3/3 checks passed twice",
+                ),
+                "malformed CLI integration summary",
+            ),
+        )
+        for text, error_pattern in malformed:
+            with self.subTest(transcript_sha256=coverage._sha256(text)):
+                with self.assertRaisesRegex(
+                    coverage.CoverageEvidenceError,
+                    error_pattern,
+                ):
+                    coverage.validate_test_transcript(text)
+
+        huge = "9" * 5000
+        with self.assertRaisesRegex(
+            coverage.CoverageEvidenceError,
+            "exceeds the supported integer range",
+        ):
+            coverage.validate_test_transcript(
+                sample_transcript().replace(
+                    "3/3 checks passed",
+                    f"{huge}/{huge} checks passed",
+                )
+            )
 
     def test_transcript_rejects_missing_or_inconsistent_evidence(self) -> None:
         malformed = (
@@ -236,6 +288,7 @@ class RendererTests(unittest.TestCase):
     def test_summary_svg_is_deterministic_safe_and_data_derived(self) -> None:
         arguments = {
             "test_count": 2,
+            "cli_checks_passed": 3,
             "compiler_short": "GCC 13.3.0",
             "lcov_short": "LCOV 2.0-1",
             "source_digest": "a" * 64,
@@ -249,6 +302,7 @@ class RendererTests(unittest.TestCase):
         self.assertIn("arena.cpp", first)
         self.assertIn("INDEPENDENT RECOUNT", first)
         self.assertIn("NOT A QUALITY SCORE", first)
+        self.assertIn("2 C++ · 3 CLI · 4 EXAMPLES", first)
         coverage.reject_unsafe_public_text("test SVG", first)
         root = ElementTree.fromstring(first)
         self.assertEqual(root.attrib["viewBox"], "0 0 1200 820")
@@ -260,14 +314,65 @@ class RendererTests(unittest.TestCase):
         text = coverage.render_summary_text(
             self.trace,
             test_count=2,
+            cli_checks_passed=3,
             compiler_version="g++ 13.3.0",
             lcov_version="lcov: LCOV version 2.0-1",
         )
 
         self.assertIn("lines: 66.7% (2/3)", text)
+        self.assertIn("2/2 C++ tests, 3/3 CLI integration checks", text)
         self.assertIn("src/arena.cpp: 1 uncovered", text)
         self.assertIn("not a benchmark", text)
         self.assertIn("compiler-generated exception paths", text)
+
+    def test_manifest_records_cli_checks_independently(self) -> None:
+        payloads = {
+            name: f"{name}\n".encode("utf-8")
+            for name in coverage.ARTIFACT_NAMES
+            if name != "manifest.json"
+        }
+        tools = {
+            "cxx": coverage.ToolIdentity(
+                Path("/usr/bin/g++"),
+                "g++",
+                "g++ (Ubuntu) 13.3.0",
+            ),
+            "gcov": coverage.ToolIdentity(
+                Path("/usr/bin/gcov"),
+                "gcov",
+                "gcov (Ubuntu) 13.3.0",
+            ),
+            "lcov": coverage.ToolIdentity(
+                Path("/usr/bin/lcov"),
+                "lcov",
+                "lcov: LCOV version 2.0-1",
+            ),
+            "geninfo": coverage.ToolIdentity(
+                Path("/usr/bin/geninfo"),
+                "geninfo",
+                "geninfo: LCOV version 2.0-1",
+            ),
+        }
+
+        manifest = json.loads(
+            coverage._manifest(
+                artifacts=payloads,
+                trace=self.trace,
+                test_count=2,
+                cli_checks_passed=3,
+                tools=tools,
+                source_snapshot={"sha256": "a" * 64},
+                counters={
+                    "counter_pairs": 2,
+                    "production_translation_units": 2,
+                },
+                jobs=2,
+            )
+        )
+
+        self.assertEqual(manifest["capture"]["test_cases_passed"], 2)
+        self.assertEqual(manifest["capture"]["cli_checks_passed"], 3)
+        self.assertEqual(manifest["capture"]["checked_examples_passed"], 4)
 
     def test_public_text_guard_rejects_identity_and_secret_shapes(self) -> None:
         unsafe_values = (
@@ -581,7 +686,7 @@ class CommittedEvidenceTests(unittest.TestCase):
             transcript_text.splitlines()[0],
             f"$ {manifest['capture']['command']}",
         )
-        transcript, tests = coverage.validate_test_transcript(
+        transcript, tests, cli_checks = coverage.validate_test_transcript(
             transcript_text.split("\n", 1)[1],
             jobs=manifest["capture"]["jobs"],
             compiler_label=manifest["tools"]["cxx"]["executable"],
@@ -591,6 +696,10 @@ class CommittedEvidenceTests(unittest.TestCase):
             transcript_text,
         )
         self.assertEqual(tests, manifest["capture"]["test_cases_passed"])
+        self.assertEqual(
+            cli_checks,
+            manifest["capture"]["cli_checks_passed"],
+        )
 
         svg = (output_dir / "summary.svg").read_text(encoding="utf-8")
         ElementTree.fromstring(svg)

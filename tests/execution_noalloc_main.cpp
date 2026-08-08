@@ -82,12 +82,14 @@ struct ExecutionFixture final {
   const tensorkiln::ValueId right =
       unwrap(builder.input("right", f32({2, 2})));
   const tensorkiln::ValueId contiguous = unwrap(builder.add(left, right));
+  const tensorkiln::ValueId multiplied =
+      unwrap(builder.mul(contiguous, right));
 
   const std::array<float, 2U> bias_data{{0.25F, -0.5F}};
   const tensorkiln::ValueId bias =
       unwrap(builder.constant("bias", f32({2}), bias_data));
-  const tensorkiln::ValueId broadcast =
-      unwrap(builder.add(contiguous, bias));
+  const tensorkiln::ValueId gated = unwrap(builder.mul(multiplied, bias));
+  const tensorkiln::ValueId broadcast = unwrap(builder.add(gated, bias));
 
   const std::array<float, 4U> weight_data{{1.0F, -2.0F, 0.5F, 3.0F}};
   const tensorkiln::ValueId weight =
@@ -171,7 +173,7 @@ struct ExecutionFixture final {
   const tensorkiln::ExecutionPlan softmax_plan =
       unwrap(tensorkiln::ExecutionPlanCompiler::run(softmax_graph));
 
-  std::array<std::uint64_t, 6U> kernel_counts{};
+  std::array<std::uint64_t, 8U> kernel_counts{};
   for (const tensorkiln::ExecutionStep& step : plan.steps()) {
     const std::size_t kernel = static_cast<std::size_t>(step.kernel());
     if (kernel >= kernel_counts.size()) {

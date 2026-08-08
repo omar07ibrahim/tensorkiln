@@ -111,6 +111,12 @@ Result<ValueId> replay_operation(
             }
             return builder.add(operands[0], operands[1]);
           },
+          [&builder, &source, operands](const MulOp&) {
+            if (operands.size() != 2U) {
+              return arity_error(source, 2U);
+            }
+            return builder.mul(operands[0], operands[1]);
+          },
           [&builder, &source, operands](const MatMulOp&) {
             if (operands.size() != 2U) {
               return arity_error(source, 2U);
@@ -183,6 +189,7 @@ std::optional<Diagnostic> validate_replayed_node(
                                    result_operation.data);
           },
           [](const AddOp&) { return true; },
+          [](const MulOp&) { return true; },
           [](const MatMulOp&) { return true; },
           [](const ReluOp&) { return true; },
           [&result](const SoftmaxOp& source_operation) {

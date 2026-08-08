@@ -73,6 +73,7 @@ struct ConstantOp final {
 };
 
 struct AddOp final {};
+struct MulOp final {};
 struct MatMulOp final {};
 struct ReluOp final {};
 struct SoftmaxOp final {
@@ -83,7 +84,8 @@ struct SoftmaxOp final {
 };
 
 using Operation =
-    std::variant<InputOp, ConstantOp, AddOp, MatMulOp, ReluOp, SoftmaxOp>;
+    std::variant<InputOp, ConstantOp, AddOp, MatMulOp, ReluOp, SoftmaxOp,
+                 MulOp>;
 
 class Node final {
  public:
@@ -197,6 +199,7 @@ class GraphBuilder final {
                                          std::span<const float> data);
 
   [[nodiscard]] Result<ValueId> add(ValueId left, ValueId right);
+  [[nodiscard]] Result<ValueId> mul(ValueId left, ValueId right);
   [[nodiscard]] Result<ValueId> matmul(ValueId left, ValueId right);
   [[nodiscard]] Result<ValueId> relu(ValueId input);
   [[nodiscard]] Result<ValueId> softmax(ValueId input,

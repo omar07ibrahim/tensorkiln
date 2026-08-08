@@ -23,6 +23,7 @@ class MaterializesArenaBuffer final {
     return false;
   }
   [[nodiscard]] bool operator()(const AddOp&) const noexcept { return true; }
+  [[nodiscard]] bool operator()(const MulOp&) const noexcept { return true; }
   [[nodiscard]] bool operator()(const MatMulOp&) const noexcept {
     return true;
   }

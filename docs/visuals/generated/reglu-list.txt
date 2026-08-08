@@ -1,0 +1,4 @@
+TensorKiln compiled-in workloads
+  dense_relu_v1  f32[2,3] -> MatMul(f32[3,2]) -> Add(f32[2]) -> Relu
+  reglu_mlp_v1  f32[2,3] -> dual MatMul+Add branches -> Relu(gate) * value -> f32[2,4]
+scope: bounded examples; no graph or model-file import

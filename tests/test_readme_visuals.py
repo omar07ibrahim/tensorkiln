@@ -4,10 +4,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+import signal
 import subprocess
 import sys
+import tempfile
+import time
 import unittest
+import zlib
 from pathlib import Path
 from unittest import mock
 from xml.etree import ElementTree
@@ -116,6 +121,116 @@ CLI_EXECUTE_STDOUT = (
     )
     + "\n"
 )
+
+REGLU_WORKLOADS_STDOUT = (
+    json.dumps(
+        {
+            "schema": "tensorkiln.cli.workloads.v1",
+            "workloads": [visuals.CLI_WORKLOAD, visuals.REGLU_WORKLOAD],
+        },
+        separators=(",", ":"),
+    )
+    + "\n"
+)
+REGLU_INSPECT_STDOUT = (
+    json.dumps(
+        {
+            "schema": "tensorkiln.cli.inspect.v1",
+            "workload": visuals.REGLU_WORKLOAD,
+            "plan": {
+                "stats": visuals.REGLU_PLAN_STATS,
+                "kernels": list(visuals.REGLU_KERNELS),
+                "canonical_dump": visuals.REGLU_CANONICAL_DUMP,
+            },
+        },
+        separators=(",", ":"),
+    )
+    + "\n"
+)
+REGLU_EXECUTE_STDOUT = (
+    json.dumps(
+        {
+            "schema": "tensorkiln.cli.execute.v1",
+            "workload": visuals.REGLU_WORKLOAD,
+            "plan": {
+                "stats": visuals.REGLU_PLAN_STATS,
+                "kernels": list(visuals.REGLU_KERNELS),
+            },
+            "execution": {
+                "run_status": "success",
+                "kernel_write_audit": True,
+                "logical_workspace_bytes": 192,
+                "input": {
+                    "name": "x",
+                    "dtype": "f32",
+                    "shape": [2, 3],
+                    "bits": list(visuals.REGLU_INPUT_BITS),
+                },
+                "outputs": [
+                    {
+                        "name": "result",
+                        "dtype": "f32",
+                        "shape": [2, 4],
+                        "bits": list(visuals.REGLU_OUTPUT_BITS),
+                    }
+                ],
+                "reference_check": {
+                    "comparison": "raw_f32_bits",
+                    "matched": 8,
+                    "total": 8,
+                    "status": "match",
+                },
+                "verification_scope": "this_workload_and_input_bits",
+                "benchmark": False,
+            },
+        },
+        separators=(",", ":"),
+    )
+    + "\n"
+)
+REGLU_LIST_TEXT_STDOUT = visuals._reglu_list_text()
+REGLU_INSPECT_TEXT_STDOUT = visuals._reglu_inspect_text()
+REGLU_EXECUTE_TEXT_STDOUT = visuals._reglu_execute_text()
+PUBLISHED_V3_SHA256 = {
+    "arena-plan.txt": (
+        "5cda0ab2cc42372c6991c2387aca6635212b35d7dbb2391d0af7895f2af1c0bb"
+    ),
+    "arena-reuse.svg": (
+        "9c0baf3fce1d27bc0fc085e360edac24a5e795d31dff75f0a75a2c547bd36088"
+    ),
+    "cli-execute.json": (
+        "2d74429690aa514770d5a137ebf958f8b475a5b1cb4425a36ae7a4e42566b86b"
+    ),
+    "cli-execution.svg": (
+        "d4f0933e2759a0be0181ec4b131fd2656092496f9dfc48ffd40caa4a07e87839"
+    ),
+    "cli-inspect.json": (
+        "bafba37b0c4ece4545ee011cdb904c070bcb456a5180ef1512b6b579340a8690"
+    ),
+    "execute-graph.svg": (
+        "b8e6741259a7b582da5f14f111a9d821ef0279e5736fb0ad9ee3da6b1b442e8e"
+    ),
+    "execute-graph.txt": (
+        "831194f4d7019e85ba32c7e2355dfc49b4caa3f4b1ae7b9db47b75bdae85a2e4"
+    ),
+    "execute-softmax.svg": (
+        "2499cbb7ddd1877aeb040a0522deeab01ce4aff217c4af602b1289243c22f341"
+    ),
+    "execute-softmax.txt": (
+        "a8fde11bd37ec79801fd9c7d8f370501b2d4197dbd5816ff6f461c7469ae5898"
+    ),
+}
+
+
+def validated_reglu_evidence() -> visuals.RegluEvidence:
+    return visuals.validate_reglu_evidence(
+        REGLU_WORKLOADS_STDOUT,
+        REGLU_INSPECT_STDOUT,
+        REGLU_EXECUTE_STDOUT,
+        REGLU_LIST_TEXT_STDOUT,
+        REGLU_INSPECT_TEXT_STDOUT,
+        REGLU_EXECUTE_TEXT_STDOUT,
+    )
 
 
 class ArenaEvidenceTests(unittest.TestCase):
@@ -493,6 +608,311 @@ class TranscriptTests(unittest.TestCase):
         self.assertNotIn("/home/", artifacts["manifest.json"])
 
 
+class BoundedProcessCaptureTests(unittest.TestCase):
+    ENVIRONMENT = {"LANG": "C", "LC_ALL": "C", "TZ": "UTC"}
+
+    def capture(
+        self,
+        script: str,
+        *,
+        maximum_output_bytes: int,
+        timeout_seconds: float,
+    ) -> subprocess.CompletedProcess[bytes]:
+        return visuals._run_bounded_process(
+            [sys.executable, "-I", "-c", script],
+            environment=self.ENVIRONMENT,
+            timeout_seconds=timeout_seconds,
+            maximum_output_bytes=maximum_output_bytes,
+        )
+
+    def parse_process_identity(self, payload: bytes) -> tuple[int, int]:
+        fields = payload.strip().split()
+        self.assertEqual(len(fields), 2)
+        process_id, starttime = (int(field) for field in fields)
+        self.assertGreater(process_id, 0)
+        self.assertGreater(starttime, 0)
+        return process_id, starttime
+
+    def read_process_identity(
+        self, process_id: int
+    ) -> tuple[str, int] | None:
+        try:
+            stat = Path(f"/proc/{process_id}/stat").read_text(
+                encoding="ascii"
+            )
+        except (FileNotFoundError, ProcessLookupError):
+            return None
+        stat_fields = stat.rsplit(") ", maxsplit=1)[1].split()
+        return stat_fields[0], int(stat_fields[19])
+
+    def assert_process_terminated(self, identity: tuple[int, int]) -> None:
+        process_id, expected_starttime = identity
+        reap_deadline = time.monotonic() + 1.0
+        while time.monotonic() < reap_deadline:
+            current = self.read_process_identity(process_id)
+            if current is None or current[1] != expected_starttime:
+                return
+            state, _starttime = current
+            if state in {"X", "Z"}:
+                return
+            time.sleep(0.01)
+
+        try:
+            process_fd = os.pidfd_open(process_id)
+        except ProcessLookupError:
+            return
+        try:
+            current = self.read_process_identity(process_id)
+            if current is None or current[1] != expected_starttime:
+                return
+            try:
+                signal.pidfd_send_signal(process_fd, signal.SIGKILL)
+            except ProcessLookupError:
+                return
+        finally:
+            os.close(process_fd)
+        self.fail(
+            "bounded helper left its descendant running "
+            f"(pid={process_id}, starttime={expected_starttime})"
+        )
+
+    def test_exact_limit_is_accepted_and_limit_plus_one_is_killed(self) -> None:
+        exact_script = """\
+import os
+payload = b"x" * 4096
+while payload:
+    payload = payload[os.write(1, payload):]
+"""
+        completed = self.capture(
+            exact_script,
+            maximum_output_bytes=4096,
+            timeout_seconds=2.0,
+        )
+        self.assertEqual(completed.returncode, 0)
+        self.assertEqual(completed.stdout, b"x" * 4096)
+        self.assertEqual(completed.stderr, b"")
+
+        overflow_script = """\
+import os
+import time
+payload = b"x" * 4097
+while payload:
+    payload = payload[os.write(1, payload):]
+time.sleep(10)
+"""
+        started = time.monotonic()
+        with self.assertRaises(
+            visuals._ProcessOutputLimitExceeded
+        ) as raised:
+            self.capture(
+                overflow_script,
+                maximum_output_bytes=4096,
+                timeout_seconds=2.0,
+            )
+        self.assertEqual(raised.exception.stream, "stdout")
+        self.assertEqual(raised.exception.maximum_bytes, 4096)
+        self.assertLess(time.monotonic() - started, 1.5)
+
+    def test_stdout_and_stderr_are_drained_concurrently(self) -> None:
+        script = """\
+import fcntl
+import os
+
+count = fcntl.fcntl(1, fcntl.F_GETPIPE_SZ) + 4096
+for descriptor, byte in ((1, b"o"), (2, b"e")):
+    payload = byte * count
+    while payload:
+        payload = payload[os.write(descriptor, payload):]
+"""
+        completed = self.capture(
+            script,
+            maximum_output_bytes=2 * 1024 * 1024,
+            timeout_seconds=2.0,
+        )
+        self.assertEqual(completed.returncode, 0)
+        self.assertEqual(len(completed.stdout), len(completed.stderr))
+        self.assertGreater(len(completed.stdout), 4096)
+        self.assertEqual(set(completed.stdout), {ord("o")})
+        self.assertEqual(set(completed.stderr), {ord("e")})
+
+    def test_timeout_covers_closed_pipes_and_grandchild_inherited_pipes(
+        self,
+    ) -> None:
+        closed_pipes = """\
+import os
+import time
+os.close(1)
+os.close(2)
+time.sleep(10)
+"""
+        started = time.monotonic()
+        with self.assertRaises(subprocess.TimeoutExpired):
+            self.capture(
+                closed_pipes,
+                maximum_output_bytes=4096,
+                timeout_seconds=0.5,
+            )
+        self.assertLess(time.monotonic() - started, 1.5)
+
+        inherited_pipes = """\
+import subprocess
+import sys
+
+child = subprocess.Popen(
+    [sys.executable, "-I", "-c", "import time; time.sleep(10)"]
+)
+stat = open(f"/proc/{child.pid}/stat", encoding="ascii").read()
+starttime = stat.rsplit(") ", 1)[1].split()[19]
+print(child.pid, starttime, flush=True)
+"""
+        started = time.monotonic()
+        with self.assertRaises(subprocess.TimeoutExpired) as raised:
+            self.capture(
+                inherited_pipes,
+                maximum_output_bytes=4096,
+                timeout_seconds=0.5,
+            )
+        self.assertLess(time.monotonic() - started, 1.5)
+        self.assertIsInstance(raised.exception.output, bytes)
+        grandchild_identity = self.parse_process_identity(
+            raised.exception.output
+        )
+        self.assert_process_terminated(grandchild_identity)
+
+    def test_successful_parent_cannot_leave_devnull_child_running(self) -> None:
+        detached_output_child = """\
+import subprocess
+import sys
+
+child = subprocess.Popen(
+    [sys.executable, "-I", "-c", "import time; time.sleep(10)"],
+    stdin=subprocess.DEVNULL,
+    stdout=subprocess.DEVNULL,
+    stderr=subprocess.DEVNULL,
+)
+stat = open(f"/proc/{child.pid}/stat", encoding="ascii").read()
+starttime = stat.rsplit(") ", 1)[1].split()[19]
+print(child.pid, starttime, flush=True)
+"""
+        completed = self.capture(
+            detached_output_child,
+            maximum_output_bytes=4096,
+            timeout_seconds=2.0,
+        )
+        self.assertEqual(completed.returncode, 0)
+        self.assertEqual(completed.stderr, b"")
+        child_identity = self.parse_process_identity(completed.stdout)
+        self.assert_process_terminated(child_identity)
+
+    def test_completed_parent_preserves_exit_7_and_kills_devnull_child(
+        self,
+    ) -> None:
+        detached_output_child = """\
+import subprocess
+import sys
+
+child = subprocess.Popen(
+    [sys.executable, "-I", "-c", "import time; time.sleep(10)"],
+    stdin=subprocess.DEVNULL,
+    stdout=subprocess.DEVNULL,
+    stderr=subprocess.DEVNULL,
+)
+stat = open(f"/proc/{child.pid}/stat", encoding="ascii").read()
+starttime = stat.rsplit(") ", 1)[1].split()[19]
+print(child.pid, starttime, flush=True)
+raise SystemExit(7)
+"""
+        completed = self.capture(
+            detached_output_child,
+            maximum_output_bytes=4096,
+            timeout_seconds=2.0,
+        )
+        self.assertEqual(completed.returncode, 7)
+        self.assertEqual(completed.stderr, b"")
+        child_identity = self.parse_process_identity(completed.stdout)
+        self.assert_process_terminated(child_identity)
+
+    def test_selector_construction_failure_kills_and_closes_process(self) -> None:
+        original_terminate = visuals._terminate_process_group
+        terminated: list[subprocess.Popen[bytes]] = []
+
+        def terminate(process: subprocess.Popen[bytes]) -> None:
+            terminated.append(process)
+            original_terminate(process)
+
+        with mock.patch.object(
+            visuals.selectors,
+            "DefaultSelector",
+            side_effect=RuntimeError("selector setup failed"),
+        ), mock.patch.object(
+            visuals,
+            "_terminate_process_group",
+            side_effect=terminate,
+        ) as terminate_process:
+            with self.assertRaisesRegex(RuntimeError, "selector setup failed"):
+                self.capture(
+                    "import time; time.sleep(10)",
+                    maximum_output_bytes=4096,
+                    timeout_seconds=2.0,
+                )
+
+        terminate_process.assert_called_once()
+        self.assertEqual(len(terminated), 1)
+        process = terminated[0]
+        self.assertIsNotNone(process.returncode)
+        self.assertIsNotNone(process.stdout)
+        self.assertIsNotNone(process.stderr)
+        self.assertTrue(process.stdout.closed)
+        self.assertTrue(process.stderr.closed)
+
+    def test_termination_failure_cannot_skip_selector_or_pipe_closure(
+        self,
+    ) -> None:
+        original_selector = visuals.selectors.DefaultSelector()
+        selector = mock.Mock(wraps=original_selector)
+        original_terminate = visuals._terminate_process_group
+        terminated: list[subprocess.Popen[bytes]] = []
+
+        def terminate_then_fail(process: subprocess.Popen[bytes]) -> None:
+            terminated.append(process)
+            original_terminate(process)
+            raise RuntimeError("termination cleanup failed")
+
+        closed_pipes = """\
+import os
+import time
+os.close(1)
+os.close(2)
+time.sleep(10)
+"""
+        with mock.patch.object(
+            visuals.selectors,
+            "DefaultSelector",
+            return_value=selector,
+        ), mock.patch.object(
+            visuals,
+            "_terminate_process_group",
+            side_effect=terminate_then_fail,
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError, "termination cleanup failed"
+            ):
+                self.capture(
+                    closed_pipes,
+                    maximum_output_bytes=4096,
+                    timeout_seconds=0.2,
+                )
+
+        selector.close.assert_called_once()
+        self.assertEqual(len(terminated), 1)
+        process = terminated[0]
+        self.assertIsNotNone(process.returncode)
+        self.assertIsNotNone(process.stdout)
+        self.assertIsNotNone(process.stderr)
+        self.assertTrue(process.stdout.closed)
+        self.assertTrue(process.stderr.closed)
+
+
 class CliEvidenceTests(unittest.TestCase):
     def test_cli_runner_requires_two_identical_bounded_replays(self) -> None:
         payload = CLI_INSPECT_STDOUT.encode("ascii")
@@ -514,8 +934,8 @@ class CliEvidenceTests(unittest.TestCase):
         ), mock.patch.object(
             visuals.os, "access", return_value=True
         ), mock.patch.object(
-            visuals.subprocess,
-            "run",
+            visuals,
+            "_run_bounded_process",
             side_effect=[completed(), completed()],
         ) as run:
             stdout = visuals.run_release_cli(
@@ -532,16 +952,16 @@ class CliEvidenceTests(unittest.TestCase):
                 command[1:], list(visuals.CLI_INSPECT_ARGUMENTS)
             )
             self.assertEqual(
-                call.kwargs["env"],
+                call.kwargs["environment"],
                 {"LANG": "C", "LC_ALL": "C", "TZ": "UTC"},
             )
-            self.assertEqual(call.kwargs["stdin"], subprocess.DEVNULL)
-            self.assertEqual(call.kwargs["stdout"], subprocess.PIPE)
-            self.assertEqual(call.kwargs["stderr"], subprocess.PIPE)
-            self.assertFalse(call.kwargs["check"])
             self.assertEqual(
-                call.kwargs["timeout"],
+                call.kwargs["timeout_seconds"],
                 visuals.EXAMPLE_TIMEOUT_SECONDS,
+            )
+            self.assertEqual(
+                call.kwargs["maximum_output_bytes"],
+                visuals.MAX_OUTPUT_BYTES,
             )
 
         failure_cases = (
@@ -565,7 +985,7 @@ class CliEvidenceTests(unittest.TestCase):
             ), mock.patch.object(
                 visuals.os, "access", return_value=True
             ), mock.patch.object(
-                visuals.subprocess, "run", side_effect=results
+                visuals, "_run_bounded_process", side_effect=results
             ), self.assertRaises(visuals.VisualEvidenceError):
                 visuals.run_release_cli(
                     Path("unused-release"),
@@ -812,7 +1232,7 @@ class CliEvidenceTests(unittest.TestCase):
         sources["tensorkiln"]["commands"] = {"execute": {"replays": 2}}
         recorded = {
             "schema": "tensorkiln.readme-visual-evidence.v3",
-            "generator": {"recorded": True},
+            "generator": {"committed": True, "recorded": True},
             "repository_source": {"recorded": True},
             "sources": sources,
         }
@@ -849,7 +1269,749 @@ class CliEvidenceTests(unittest.TestCase):
         )
 
 
+class RegluVisualEvidenceTests(unittest.TestCase):
+    def test_terminal_tail_starts_at_a_complete_canonical_line(self) -> None:
+        lines = visuals._terminal_frame_lines(
+            visuals._display_cli_command(visuals.REGLU_INSPECT_TEXT_ARGUMENTS),
+            REGLU_INSPECT_TEXT_STDOUT,
+            73,
+            24,
+            tail=True,
+        )
+
+        self.assertEqual(len(lines), 23)
+        self.assertEqual(
+            lines[0],
+            "    %9 f32[2,4] dense strides=[4,1] storage=arena "
+            "#b4 offset=128",
+        )
+        self.assertEqual(lines[-1], "}")
+
+    def test_exact_contract_drives_graph_arena_output_and_terminal_media(
+        self,
+    ) -> None:
+        evidence = validated_reglu_evidence()
+
+        self.assertEqual(
+            hashlib.sha256(REGLU_WORKLOADS_STDOUT.encode()).hexdigest(),
+            "8ed8ce35c8925bce34f97677696a04e90f7ef24d27d4f447d5dbae76d6a230bc",
+        )
+        self.assertEqual(
+            hashlib.sha256(REGLU_INSPECT_STDOUT.encode()).hexdigest(),
+            "87c703c0afded52b27b471d79db6279b43fe46edd6d8ff17b53d153c62305fb9",
+        )
+        self.assertEqual(
+            hashlib.sha256(REGLU_EXECUTE_STDOUT.encode()).hexdigest(),
+            "05fa2c9eb78236547e49120fa216dd47ed3c0cfe385cc4ec164741af74009381",
+        )
+        self.assertEqual(
+            hashlib.sha256(REGLU_EXECUTE_TEXT_STDOUT.encode()).hexdigest(),
+            "e8ad4c040dc16b11b821eee8b6e744cd678a14bed35bbab2f950fe5c95aef896",
+        )
+
+        self.assertEqual(len(evidence.steps), 6)
+        self.assertEqual(
+            evidence.steps[-1].operands,
+            (5, 9),
+        )
+        self.assertEqual(
+            [(item.offset, item.live_start, item.live_end) for item in evidence.arena],
+            [
+                (0, 0, 2),
+                (64, 1, 3),
+                (0, 2, 6),
+                (64, 3, 5),
+                (128, 4, 6),
+                (64, 5, 6),
+            ],
+        )
+        self.assertEqual(evidence.output_bits[4], "0x80000000")
+
+        graph = visuals.render_reglu_graph_svg(evidence)
+        arena = visuals.render_reglu_arena_svg(evidence)
+        output = visuals.render_reglu_output_svg(evidence)
+        for svg in (graph, arena, output):
+            ElementTree.fromstring(svg)
+            self.assertNotIn("<script", svg.lower())
+            self.assertNotIn("<image", svg.lower())
+            self.assertNotIn(" href=", svg.lower())
+            visuals.reject_unsafe_text("ReGLU SVG", svg)
+        for expected in (
+            "matmul_rank2",
+            "relu_contiguous",
+            "mul_contiguous",
+            "%5,%9",
+            "80 scalar steps",
+            "Constants %1/%3/%6/%8 are omitted",
+            "NOT A FULL TRANSFORMER",
+        ):
+            self.assertIn(expected, graph)
+        for expected in (
+            "#b0→#b2",
+            "#b1→#b3→#b5",
+            "192 B verified workspace",
+            "[5,6)",
+        ):
+            self.assertIn(expected, arena)
+        arena_root = ElementTree.fromstring(arena)
+        arena_rectangles = [
+            node
+            for node in arena_root.findall(
+                "{http://www.w3.org/2000/svg}rect"
+            )
+            if node.attrib.get("height") == "16"
+        ]
+        arena_y = [int(node.attrib["y"]) for node in arena_rectangles]
+        self.assertEqual(arena_y, [197, 321, 197, 321, 445, 321])
+        self.assertEqual(arena_y[1], arena_y[3])
+        self.assertEqual(arena_y[3], arena_y[5])
+        for y, slot_top in zip(
+            arena_y,
+            (178, 302, 178, 302, 426, 302),
+            strict=True,
+        ):
+            self.assertGreaterEqual(y, slot_top)
+            self.assertLessEqual(y + 16, slot_top + 54)
+        for expected in (
+            "8 / 8 RAW F32 WORDS MATCH",
+            "0x80000000",
+            "f32 = -0",
+            "NOT A BENCHMARK",
+        ):
+            self.assertIn(expected, output)
+
+        png = visuals.render_reglu_terminal_png(evidence)
+        self.assertEqual(png[:8], b"\x89PNG\r\n\x1a\n")
+        self.assertEqual(
+            int.from_bytes(png[16:20], "big"), visuals.TERMINAL_WIDTH
+        )
+        self.assertEqual(
+            int.from_bytes(png[20:24], "big"), visuals.TERMINAL_HEIGHT
+        )
+        chunks: list[tuple[bytes, bytes]] = []
+        cursor = 8
+        while cursor < len(png):
+            length = int.from_bytes(png[cursor : cursor + 4], "big")
+            kind = png[cursor + 4 : cursor + 8]
+            payload = png[cursor + 8 : cursor + 8 + length]
+            checksum = int.from_bytes(
+                png[cursor + 8 + length : cursor + 12 + length], "big"
+            )
+            self.assertEqual(checksum, zlib.crc32(kind + payload) & 0xFFFFFFFF)
+            chunks.append((kind, payload))
+            cursor += 12 + length
+        self.assertEqual([kind for kind, _ in chunks], [b"IHDR", b"IDAT", b"IEND"])
+        self.assertEqual(cursor, len(png))
+        self.assertEqual(
+            chunks[0][1],
+            (
+                visuals.TERMINAL_WIDTH.to_bytes(4, "big")
+                + visuals.TERMINAL_HEIGHT.to_bytes(4, "big")
+                + bytes((8, 2, 0, 0, 0))
+            ),
+        )
+
+        stored_stream = chunks[1][1]
+        self.assertEqual(stored_stream[:2], b"\x78\x01")
+        self.assertEqual(int.from_bytes(stored_stream[:2], "big") % 31, 0)
+        stored_cursor = 2
+        decoded = bytearray()
+        block_count = 0
+        while True:
+            header = stored_stream[stored_cursor]
+            stored_cursor += 1
+            self.assertEqual(header & 0xFE, 0)
+            final = bool(header & 1)
+            length = int.from_bytes(
+                stored_stream[stored_cursor : stored_cursor + 2], "little"
+            )
+            complement = int.from_bytes(
+                stored_stream[stored_cursor + 2 : stored_cursor + 4], "little"
+            )
+            self.assertEqual(length ^ complement, 0xFFFF)
+            stored_cursor += 4
+            decoded.extend(stored_stream[stored_cursor : stored_cursor + length])
+            stored_cursor += length
+            block_count += 1
+            if final:
+                break
+        self.assertEqual(block_count, 24)
+        self.assertEqual(stored_cursor + 4, len(stored_stream))
+        self.assertEqual(
+            int.from_bytes(stored_stream[stored_cursor:], "big"),
+            visuals._adler32(bytes(decoded)),
+        )
+
+        source_frame = visuals._render_terminal_frame(
+            "TensorKiln ReGLU release CLI",
+            visuals._display_cli_command(visuals.REGLU_EXECUTE_TEXT_ARGUMENTS),
+            evidence.execute_text,
+            tail=False,
+        )
+        expected_rows = bytearray()
+        for y in range(visuals.TERMINAL_HEIGHT):
+            expected_rows.append(0)
+            for color in source_frame[
+                y * visuals.TERMINAL_WIDTH : (y + 1) * visuals.TERMINAL_WIDTH
+            ]:
+                expected_rows.extend(visuals._TERMINAL_PALETTE[color])
+        self.assertEqual(decoded, expected_rows)
+        inflater = zlib.decompressobj()
+        self.assertEqual(
+            inflater.decompress(stored_stream) + inflater.flush(),
+            expected_rows,
+        )
+        self.assertTrue(inflater.eof)
+        self.assertEqual(inflater.unconsumed_tail, b"")
+        self.assertEqual(inflater.unused_data, b"")
+        self.assertEqual(visuals.render_reglu_terminal_png(evidence), png)
+
+        gif = visuals.render_reglu_demo_gif(evidence)
+        self.assertEqual(gif[:6], b"GIF89a")
+        self.assertEqual(
+            int.from_bytes(gif[6:8], "little"), visuals.TERMINAL_WIDTH
+        )
+        self.assertEqual(
+            int.from_bytes(gif[8:10], "little"), visuals.TERMINAL_HEIGHT
+        )
+        self.assertEqual(gif.count(b"!\xf9\x04"), 3)
+        self.assertNotIn(b"NETSCAPE", gif)
+        self.assertNotIn(b"Comment", gif)
+        self.assertEqual(
+            visuals.render_reglu_demo_gif(evidence),
+            gif,
+        )
+
+        transcript = visuals.render_reglu_demo_transcript(evidence)
+        self.assertIn("tensorkiln list", transcript)
+        self.assertIn("tensorkiln inspect --workload reglu_mlp_v1", transcript)
+        self.assertIn("tensorkiln execute --workload reglu_mlp_v1", transcript)
+        self.assertIn(visuals.REGLU_CANONICAL_DUMP, transcript)
+        self.assertIn(REGLU_EXECUTE_TEXT_STDOUT, transcript)
+        self.assertNotIn("/home/", transcript)
+
+    def test_gif_literal_streams_are_bounded_complete_frames(self) -> None:
+        evidence = validated_reglu_evidence()
+        gif = visuals.render_reglu_demo_gif(evidence)
+        expected_frames = [
+            visuals._render_terminal_frame(
+                title,
+                visuals._display_cli_command(arguments),
+                stdout,
+                tail=tail,
+            )
+            for title, arguments, stdout, tail in (
+                (
+                    "1 / 3  Workload registry",
+                    visuals.REGLU_LIST_TEXT_ARGUMENTS,
+                    evidence.list_text,
+                    False,
+                ),
+                (
+                    "2 / 3  Canonical plan tail",
+                    visuals.REGLU_INSPECT_TEXT_ARGUMENTS,
+                    evidence.inspect_text,
+                    True,
+                ),
+                (
+                    "3 / 3  Audited execution",
+                    visuals.REGLU_EXECUTE_TEXT_ARGUMENTS,
+                    evidence.execute_text,
+                    False,
+                ),
+            )
+        ]
+        cursor = 13 + 3 * 8
+        decoded_frames = 0
+        delays: list[int] = []
+        while gif[cursor] != 0x3B:
+            self.assertEqual(gif[cursor : cursor + 3], b"!\xf9\x04")
+            delays.append(int.from_bytes(gif[cursor + 4 : cursor + 6], "little"))
+            cursor += 8
+            self.assertEqual(gif[cursor], 0x2C)
+            cursor += 10
+            self.assertEqual(gif[cursor], 3)
+            cursor += 1
+            compressed = bytearray()
+            while gif[cursor] != 0:
+                block_length = gif[cursor]
+                cursor += 1
+                compressed.extend(gif[cursor : cursor + block_length])
+                cursor += block_length
+            cursor += 1
+
+            codes: list[int] = []
+            for byte in compressed:
+                codes.extend((byte & 0x0F, byte >> 4))
+            pixel_count = 0
+            decoded = bytearray()
+            literals_since_clear = 0
+            saw_end = False
+            for code in codes:
+                if code == 8:
+                    literals_since_clear = 0
+                elif code == 9:
+                    saw_end = True
+                    break
+                else:
+                    self.assertLess(code, 8)
+                    literals_since_clear += 1
+                    self.assertLessEqual(literals_since_clear, 6)
+                    pixel_count += 1
+                    decoded.append(code)
+            self.assertTrue(saw_end)
+            self.assertEqual(
+                pixel_count,
+                visuals.TERMINAL_WIDTH * visuals.TERMINAL_HEIGHT,
+            )
+            self.assertEqual(decoded, expected_frames[decoded_frames])
+            decoded_frames += 1
+        self.assertEqual(cursor, len(gif) - 1)
+        self.assertEqual(decoded_frames, 3)
+        self.assertEqual(delays, list(visuals.TERMINAL_GIF_DELAYS_CS))
+
+    def test_reglu_validator_fails_closed_on_mutation_and_ansi(self) -> None:
+        output = json.loads(REGLU_EXECUTE_STDOUT)
+        output["execution"]["outputs"][0]["bits"][4] = "0x00000000"
+        mutated_output = json.dumps(output, separators=(",", ":")) + "\n"
+
+        inspect = json.loads(REGLU_INSPECT_STDOUT)
+        inspect["plan"]["canonical_dump"] = inspect["plan"][
+            "canonical_dump"
+        ].replace("mul_contiguous_f32(%5,%9)", "mul_contiguous_f32(%9,%5)")
+        mutated_inspect = json.dumps(inspect, separators=(",", ":")) + "\n"
+
+        workloads = json.loads(REGLU_WORKLOADS_STDOUT)
+        workloads["workloads"].reverse()
+        mutated_workloads = json.dumps(workloads, separators=(",", ":")) + "\n"
+
+        cases = (
+            (mutated_workloads, REGLU_INSPECT_STDOUT, REGLU_EXECUTE_STDOUT,
+             REGLU_LIST_TEXT_STDOUT),
+            (REGLU_WORKLOADS_STDOUT, mutated_inspect, REGLU_EXECUTE_STDOUT,
+             REGLU_LIST_TEXT_STDOUT),
+            (REGLU_WORKLOADS_STDOUT, REGLU_INSPECT_STDOUT, mutated_output,
+             REGLU_LIST_TEXT_STDOUT),
+            (REGLU_WORKLOADS_STDOUT, REGLU_INSPECT_STDOUT, REGLU_EXECUTE_STDOUT,
+             REGLU_LIST_TEXT_STDOUT + "\x1b[31m"),
+        )
+        for list_json, inspect_json, execute_json, list_text in cases:
+            with self.subTest(
+                digest=hashlib.sha256(
+                    (list_json + inspect_json + execute_json + list_text).encode()
+                ).hexdigest()
+            ), self.assertRaises(visuals.VisualEvidenceError):
+                visuals.validate_reglu_evidence(
+                    list_json,
+                    inspect_json,
+                    execute_json,
+                    list_text,
+                    REGLU_INSPECT_TEXT_STDOUT,
+                    REGLU_EXECUTE_TEXT_STDOUT,
+                )
+
+    def test_v4_bundle_preserves_v3_artifacts_and_binds_binary_media(
+        self,
+    ) -> None:
+        published_execute_stdout = (
+            REPOSITORY_ROOT
+            / "docs"
+            / "visuals"
+            / "generated"
+            / "execute-graph.txt"
+        ).read_text(encoding="ascii")
+
+        def fake_example(
+            _build_dir: Path,
+            binary_name: str,
+            _sentinels: tuple[str, ...],
+        ) -> str:
+            return {
+                "plan_arena": PLAN_STDOUT,
+                "execute_graph": published_execute_stdout,
+                "execute_softmax": SOFTMAX_STDOUT,
+            }[binary_name]
+
+        cli_outputs = {
+            "CLI inspect": CLI_INSPECT_STDOUT,
+            "CLI execute": CLI_EXECUTE_STDOUT,
+            "ReGLU CLI list JSON": REGLU_WORKLOADS_STDOUT,
+            "ReGLU CLI inspect JSON": REGLU_INSPECT_STDOUT,
+            "ReGLU CLI execute JSON": REGLU_EXECUTE_STDOUT,
+            "ReGLU CLI list text": REGLU_LIST_TEXT_STDOUT,
+            "ReGLU CLI inspect text": REGLU_INSPECT_TEXT_STDOUT,
+            "ReGLU CLI execute text": REGLU_EXECUTE_TEXT_STDOUT,
+        }
+
+        def fake_cli(
+            _build_dir: Path,
+            label: str,
+            _arguments: tuple[str, ...],
+        ) -> str:
+            return cli_outputs[label]
+
+        source_provenance = {
+            "commit": "1" * 40,
+            "object_format": "sha1",
+            "selection": "test source selection",
+            "source_files": {},
+            "tree": "2" * 40,
+        }
+        binary_provenance = {
+            "execute_graph": {"bytes": 101, "sha256": "3" * 64},
+            "execute_softmax": {"bytes": 102, "sha256": "4" * 64},
+            "plan_arena": {"bytes": 103, "sha256": "5" * 64},
+            "tensorkiln": {"bytes": 104, "sha256": "6" * 64},
+        }
+        generator_provenance = {
+            "bytes": 105,
+            "commit": "7" * 40,
+            "committed": True,
+            "git_blob": "8" * 40,
+            "path": "tools/render_readme_visuals.py",
+            "sha256": "9" * 64,
+            "tree": "a" * 40,
+        }
+
+        def render(*, include_reglu: bool) -> dict[str, visuals.Artifact]:
+            with mock.patch.object(
+                visuals, "run_release_example", side_effect=fake_example
+            ), mock.patch.object(
+                visuals, "run_release_cli", side_effect=fake_cli
+            ), mock.patch.object(
+                visuals,
+                "collect_source_provenance",
+                return_value=source_provenance,
+            ), mock.patch.object(
+                visuals,
+                "collect_binary_provenance",
+                return_value=binary_provenance,
+            ), mock.patch.object(
+                visuals,
+                "collect_generator_provenance",
+                return_value=generator_provenance,
+            ):
+                return visuals.render_visuals(
+                    Path("unused-release-dir"),
+                    include_cli=True,
+                    include_reglu=include_reglu,
+                )
+
+        v3 = render(include_reglu=False)
+        v4 = render(include_reglu=True)
+        existing_artifacts = {
+            "arena-plan.txt",
+            "arena-reuse.svg",
+            "cli-execute.json",
+            "cli-execution.svg",
+            "cli-inspect.json",
+            "execute-graph.svg",
+            "execute-graph.txt",
+            "execute-softmax.svg",
+            "execute-softmax.txt",
+        }
+        self.assertEqual(
+            visuals.PUBLISHED_V3_ARTIFACT_SHA256, PUBLISHED_V3_SHA256
+        )
+        self.assertEqual(set(PUBLISHED_V3_SHA256), existing_artifacts)
+        for filename in existing_artifacts:
+            self.assertEqual(v4[filename], v3[filename])
+            self.assertEqual(
+                hashlib.sha256(
+                    visuals._artifact_bytes(v4[filename])
+                ).hexdigest(),
+                PUBLISHED_V3_SHA256[filename],
+            )
+
+        manifest = json.loads(v4["manifest.json"])
+        self.assertEqual(
+            manifest["schema"], "tensorkiln.readme-visual-evidence.v4"
+        )
+        for filename, artifact in v4.items():
+            if filename == "manifest.json":
+                continue
+            record = manifest["artifacts"][filename]
+            payload = visuals._artifact_bytes(artifact)
+            self.assertEqual(record["bytes"], len(payload))
+            self.assertEqual(
+                record["sha256"], hashlib.sha256(payload).hexdigest()
+            )
+            self.assertEqual(
+                record["media_type"], visuals._artifact_media_type(filename)
+            )
+        self.assertIsInstance(v4["reglu-terminal.png"], bytes)
+        self.assertIsInstance(v4["reglu-demo.gif"], bytes)
+        commands = manifest["sources"]["tensorkiln"]["commands"]
+        expected_commands = (
+            (
+                "execute",
+                visuals.CLI_EXECUTE_ARGUMENTS,
+                "tensorkiln.cli.execute.v1",
+                "cli-execute.json",
+                CLI_EXECUTE_STDOUT,
+            ),
+            (
+                "inspect",
+                visuals.CLI_INSPECT_ARGUMENTS,
+                "tensorkiln.cli.inspect.v1",
+                "cli-inspect.json",
+                CLI_INSPECT_STDOUT,
+            ),
+            (
+                "reglu_execute_json",
+                visuals.REGLU_EXECUTE_ARGUMENTS,
+                "tensorkiln.cli.execute.v1",
+                "reglu-execute.json",
+                REGLU_EXECUTE_STDOUT,
+            ),
+            (
+                "reglu_execute_text",
+                visuals.REGLU_EXECUTE_TEXT_ARGUMENTS,
+                "text/plain",
+                "reglu-execute.txt",
+                REGLU_EXECUTE_TEXT_STDOUT,
+            ),
+            (
+                "reglu_inspect_json",
+                visuals.REGLU_INSPECT_ARGUMENTS,
+                "tensorkiln.cli.inspect.v1",
+                "reglu-inspect.json",
+                REGLU_INSPECT_STDOUT,
+            ),
+            (
+                "reglu_inspect_text",
+                visuals.REGLU_INSPECT_TEXT_ARGUMENTS,
+                "text/plain",
+                "reglu-inspect.txt",
+                REGLU_INSPECT_TEXT_STDOUT,
+            ),
+            (
+                "reglu_list_json",
+                visuals.REGLU_LIST_ARGUMENTS,
+                "tensorkiln.cli.workloads.v1",
+                "cli-workloads.json",
+                REGLU_WORKLOADS_STDOUT,
+            ),
+            (
+                "reglu_list_text",
+                visuals.REGLU_LIST_TEXT_ARGUMENTS,
+                "text/plain",
+                "reglu-list.txt",
+                REGLU_LIST_TEXT_STDOUT,
+            ),
+        )
+        self.assertEqual(
+            set(commands), {item[0] for item in expected_commands}
+        )
+        for name, arguments, schema, artifact, stdout in expected_commands:
+            self.assertEqual(
+                commands[name],
+                {
+                    "arguments": list(arguments),
+                    "byte_identical": True,
+                    "replays": 2,
+                    "schema": schema,
+                    "stdout_artifact": artifact,
+                    "stdout_sha256": hashlib.sha256(
+                        stdout.encode()
+                    ).hexdigest(),
+                },
+            )
+        self.assertEqual(
+            manifest["sources"]["tensorkiln"]["presentation"]
+            ["gif_delay_centiseconds"],
+            list(visuals.TERMINAL_GIF_DELAYS_CS),
+        )
+        self.assertTrue(
+            any(
+                "not a full transformer" in claim
+                for claim in manifest["claim_boundary"]
+            )
+        )
+        self.assertTrue(
+            any(
+                "preserved v3 dense CLI evidence" in claim
+                for claim in manifest["claim_boundary"]
+            )
+        )
+        self.assertTrue(
+            any(
+                "shallow checks bind current generator" in claim
+                for claim in manifest["claim_boundary"]
+            )
+        )
+
+    def test_output_io_rejects_symlinks_and_reports_orphans(self) -> None:
+        build_dir = REPOSITORY_ROOT / "build"
+        build_dir.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(
+            prefix="visual-io-test-", dir=build_dir
+        ) as temporary:
+            root = Path(temporary)
+            output = root / "generated"
+            generated: dict[str, visuals.Artifact] = {
+                "sample.txt": "exact text\n",
+                "sample.png": b"\x89PNG\r\n\x1a\n",
+            }
+            with mock.patch("builtins.print"):
+                visuals.write_visuals(output, generated)
+                self.assertEqual(visuals.check_visuals(output, generated), 0)
+            self.assertEqual(
+                {path.name for path in output.iterdir()}, set(generated)
+            )
+            self.assertEqual(
+                (output / "sample.txt").stat().st_mode & 0o777, 0o644
+            )
+
+            orphan = output / "orphan.txt"
+            orphan.write_text("orphan\n", encoding="ascii")
+            with mock.patch("builtins.print") as report:
+                self.assertEqual(visuals.check_visuals(output, generated), 1)
+            self.assertTrue(
+                any("orphan" in str(call) for call in report.call_args_list)
+            )
+            orphan.unlink()
+
+            outside = root / "outside.txt"
+            outside.write_text("must remain unchanged\n", encoding="ascii")
+            unsafe_output = root / "unsafe"
+            unsafe_output.mkdir()
+            (unsafe_output / "sample.txt").symlink_to(outside)
+            with self.assertRaisesRegex(
+                visuals.VisualEvidenceError, "securely open visual artifact"
+            ):
+                visuals.check_visuals(
+                    unsafe_output, {"sample.txt": "replacement\n"}
+                )
+            with self.assertRaisesRegex(
+                visuals.VisualEvidenceError, "not a regular file"
+            ):
+                visuals.write_visuals(
+                    unsafe_output, {"sample.txt": "replacement\n"}
+                )
+            self.assertEqual(
+                outside.read_text(encoding="ascii"),
+                "must remain unchanged\n",
+            )
+
+            linked_directory = root / "linked-output"
+            linked_directory.symlink_to(output, target_is_directory=True)
+            with self.assertRaisesRegex(
+                visuals.VisualEvidenceError,
+                "securely open visual output directory",
+            ):
+                visuals.write_visuals(
+                    linked_directory, {"sample.txt": "replacement\n"}
+                )
+
+    def test_uncommitted_v4_preview_is_checkable_only_when_explicit(self) -> None:
+        preview_generator = {
+            "bytes": 123,
+            "commit": None,
+            "committed": False,
+            "git_blob": None,
+            "path": "tools/render_readme_visuals.py",
+            "sha256": "a" * 64,
+            "tree": None,
+        }
+        sources = {
+            name: {
+                "binary": name,
+                "binary_bytes": index + 100,
+                "binary_sha256": str(index) * 64,
+            }
+            for index, name in enumerate(
+                (
+                    "execute_graph",
+                    "execute_softmax",
+                    "plan_arena",
+                    "tensorkiln",
+                ),
+                start=1,
+            )
+        }
+        preview_manifest = {
+            "generator": preview_generator,
+            "repository_source": {"preview": True},
+            "schema": "tensorkiln.readme-visual-evidence.v4",
+            "sources": sources,
+        }
+        generated: dict[str, visuals.Artifact] = {
+            "manifest.json": (
+                json.dumps(preview_manifest, indent=2, sort_keys=True) + "\n"
+            )
+        }
+        build_dir = REPOSITORY_ROOT / "build"
+        with tempfile.TemporaryDirectory(
+            prefix="visual-preview-test-", dir=build_dir
+        ) as temporary, mock.patch.object(
+            visuals,
+            "_preserve_recorded_repository_source",
+            side_effect=lambda _recorded, current: current,
+        ), mock.patch("builtins.print"):
+            output = Path(temporary)
+            visuals.write_visuals(output, generated)
+            self.assertEqual(
+                visuals.check_visuals(
+                    output,
+                    generated,
+                    allow_uncommitted_generator=True,
+                ),
+                0,
+            )
+            with self.assertRaisesRegex(
+                visuals.VisualEvidenceError,
+                "only for an explicit preview",
+            ):
+                visuals.check_visuals(output, generated)
+
+
 class SourceProvenanceTests(unittest.TestCase):
+    def test_shallow_generator_provenance_binds_current_blob_content(
+        self,
+    ) -> None:
+        payload = b"committed renderer fixture\n"
+        git_blob = hashlib.sha1(
+            f"blob {len(payload)}\0".encode("ascii") + payload
+        ).hexdigest()
+        generator = {
+            "bytes": len(payload),
+            "commit": "1" * 40,
+            "committed": True,
+            "git_blob": git_blob,
+            "path": visuals.GENERATOR_PATH,
+            "sha256": hashlib.sha256(payload).hexdigest(),
+            "tree": "2" * 40,
+        }
+
+        with mock.patch.object(
+            visuals,
+            "_git_text",
+            side_effect=("sha1", "true"),
+        ), mock.patch.object(
+            visuals,
+            "_read_regular_file",
+            return_value=payload,
+        ):
+            self.assertEqual(
+                visuals._validate_recorded_generator(generator),
+                generator,
+            )
+
+        with mock.patch.object(
+            visuals,
+            "_git_text",
+            side_effect=("sha1", "true"),
+        ), mock.patch.object(
+            visuals,
+            "_read_regular_file",
+            return_value=payload + b"drift",
+        ), self.assertRaisesRegex(
+            visuals.VisualEvidenceError,
+            "shallow checkout generator differs",
+        ):
+            visuals._validate_recorded_generator(generator)
+
     def test_dirty_pathspec_scope_fails_before_source_discovery(self) -> None:
         with mock.patch.object(
             visuals,
@@ -924,7 +2086,7 @@ class SourceProvenanceTests(unittest.TestCase):
 
 
 class CommittedVisualEvidenceTests(unittest.TestCase):
-    def test_v3_bundle_is_complete_safe_and_manifest_bound(self) -> None:
+    def test_v4_bundle_is_complete_safe_and_manifest_bound(self) -> None:
         evidence_dir = REPOSITORY_ROOT / "docs" / "visuals" / "generated"
         manifest_path = evidence_dir / "manifest.json"
 
@@ -945,7 +2107,35 @@ class CommittedVisualEvidenceTests(unittest.TestCase):
             object_pairs_hook=reject_duplicate_keys,
         )
         self.assertEqual(
-            manifest["schema"], "tensorkiln.readme-visual-evidence.v3"
+            manifest["schema"], "tensorkiln.readme-visual-evidence.v4"
+        )
+        expected_artifacts = {
+            "arena-plan.txt",
+            "arena-reuse.svg",
+            "cli-execute.json",
+            "cli-execution.svg",
+            "cli-inspect.json",
+            "cli-workloads.json",
+            "execute-graph.svg",
+            "execute-graph.txt",
+            "execute-softmax.svg",
+            "execute-softmax.txt",
+            "reglu-arena.svg",
+            "reglu-demo-transcript.txt",
+            "reglu-demo.gif",
+            "reglu-execute.json",
+            "reglu-execute.txt",
+            "reglu-graph.svg",
+            "reglu-inspect.json",
+            "reglu-inspect.txt",
+            "reglu-list.txt",
+            "reglu-output.svg",
+            "reglu-terminal.png",
+        }
+        self.assertEqual(set(manifest["artifacts"]), expected_artifacts)
+        self.assertEqual(
+            {path.name for path in evidence_dir.iterdir() if path.is_file()},
+            expected_artifacts | {"manifest.json"},
         )
         self.assertTrue(manifest["generator"]["committed"])
         self.assertRegex(
@@ -1019,7 +2209,20 @@ class CommittedVisualEvidenceTests(unittest.TestCase):
         for filename, record in manifest["artifacts"].items():
             payload = (evidence_dir / filename).read_bytes()
             self.assertEqual(
+                set(record), {"bytes", "media_type", "sha256"}
+            )
+            self.assertEqual(record["bytes"], len(payload))
+            self.assertEqual(
+                record["media_type"],
+                visuals._artifact_media_type(filename),
+            )
+            self.assertEqual(
                 hashlib.sha256(payload).hexdigest(), record["sha256"]
+            )
+        for filename, expected_sha256 in PUBLISHED_V3_SHA256.items():
+            self.assertEqual(
+                manifest["artifacts"][filename]["sha256"],
+                expected_sha256,
             )
 
         transcript_path = evidence_dir / "execute-softmax.txt"
@@ -1075,25 +2278,106 @@ class CommittedVisualEvidenceTests(unittest.TestCase):
         visuals.reject_unsafe_text("committed CLI inspect JSON", inspect)
         visuals.reject_unsafe_text("committed CLI execute JSON", execute)
 
+        reglu_outputs = {
+            "reglu_list_json": (
+                visuals.REGLU_LIST_ARGUMENTS,
+                "tensorkiln.cli.workloads.v1",
+                "cli-workloads.json",
+            ),
+            "reglu_list_text": (
+                visuals.REGLU_LIST_TEXT_ARGUMENTS,
+                "text/plain",
+                "reglu-list.txt",
+            ),
+            "reglu_inspect_json": (
+                visuals.REGLU_INSPECT_ARGUMENTS,
+                "tensorkiln.cli.inspect.v1",
+                "reglu-inspect.json",
+            ),
+            "reglu_inspect_text": (
+                visuals.REGLU_INSPECT_TEXT_ARGUMENTS,
+                "text/plain",
+                "reglu-inspect.txt",
+            ),
+            "reglu_execute_json": (
+                visuals.REGLU_EXECUTE_ARGUMENTS,
+                "tensorkiln.cli.execute.v1",
+                "reglu-execute.json",
+            ),
+            "reglu_execute_text": (
+                visuals.REGLU_EXECUTE_TEXT_ARGUMENTS,
+                "text/plain",
+                "reglu-execute.txt",
+            ),
+        }
+        reglu_stdout = {
+            name: (evidence_dir / artifact).read_text(encoding="ascii")
+            for name, (_arguments, _schema, artifact) in reglu_outputs.items()
+        }
+        visuals.validate_reglu_evidence(
+            reglu_stdout["reglu_list_json"],
+            reglu_stdout["reglu_inspect_json"],
+            reglu_stdout["reglu_execute_json"],
+            reglu_stdout["reglu_list_text"],
+            reglu_stdout["reglu_inspect_text"],
+            reglu_stdout["reglu_execute_text"],
+        )
+        for label, stdout in reglu_stdout.items():
+            visuals.reject_unsafe_text(f"committed {label}", stdout)
+
+        for filename in (
+            "reglu-graph.svg",
+            "reglu-arena.svg",
+            "reglu-output.svg",
+        ):
+            rendered = (evidence_dir / filename).read_text(encoding="utf-8")
+            ElementTree.fromstring(rendered)
+            visuals.reject_unsafe_text(f"committed {filename}", rendered)
+            self.assertNotIn("<script", rendered.lower())
+            self.assertNotIn("<image", rendered.lower())
+            self.assertNotIn(" href=", rendered.lower())
+        self.assertTrue(
+            (evidence_dir / "reglu-terminal.png")
+            .read_bytes()
+            .startswith(b"\x89PNG\r\n\x1a\n")
+        )
+        self.assertTrue(
+            (evidence_dir / "reglu-demo.gif").read_bytes().startswith(
+                b"GIF89a"
+            )
+        )
+
         cli_source = manifest["sources"]["tensorkiln"]
         self.assertEqual(cli_source["binary"], "tensorkiln")
         self.assertRegex(cli_source["binary_sha256"], r"^[0-9a-f]{64}$")
-        for command_name, arguments, artifact, stdout in (
-            (
-                "inspect",
+        expected_commands = {
+            "inspect": (
                 visuals.CLI_INSPECT_ARGUMENTS,
+                "tensorkiln.cli.inspect.v1",
                 "cli-inspect.json",
                 inspect,
             ),
-            (
-                "execute",
+            "execute": (
                 visuals.CLI_EXECUTE_ARGUMENTS,
+                "tensorkiln.cli.execute.v1",
                 "cli-execute.json",
                 execute,
             ),
-        ):
+            **{
+                name: (arguments, schema, artifact, reglu_stdout[name])
+                for name, (arguments, schema, artifact) in reglu_outputs.items()
+            },
+        }
+        self.assertEqual(set(cli_source["commands"]), set(expected_commands))
+        for command_name, (
+            arguments,
+            schema,
+            artifact,
+            stdout,
+        ) in expected_commands.items():
             command = cli_source["commands"][command_name]
             self.assertEqual(command["arguments"], list(arguments))
+            self.assertEqual(command["schema"], schema)
             self.assertEqual(command["stdout_artifact"], artifact)
             self.assertEqual(command["replays"], 2)
             self.assertTrue(command["byte_identical"])
@@ -1181,6 +2465,18 @@ class DocumentationAssetTests(unittest.TestCase):
             "docs/visuals/generated/cli-inspect.json",
             "docs/visuals/generated/cli-execute.json",
             "docs/visuals/generated/cli-execution.svg",
+            "docs/visuals/generated/cli-workloads.json",
+            "docs/visuals/generated/reglu-list.txt",
+            "docs/visuals/generated/reglu-inspect.json",
+            "docs/visuals/generated/reglu-inspect.txt",
+            "docs/visuals/generated/reglu-execute.json",
+            "docs/visuals/generated/reglu-execute.txt",
+            "docs/visuals/generated/reglu-graph.svg",
+            "docs/visuals/generated/reglu-arena.svg",
+            "docs/visuals/generated/reglu-output.svg",
+            "docs/visuals/generated/reglu-terminal.png",
+            "docs/visuals/generated/reglu-demo.gif",
+            "docs/visuals/generated/reglu-demo-transcript.txt",
             "docs/visuals/generated/manifest.json",
         ):
             self.assertIn(relative_path, readme)

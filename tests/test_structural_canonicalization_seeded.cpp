@@ -24,6 +24,7 @@ using tensorkiln::GraphBuilder;
 using tensorkiln::GraphLimits;
 using tensorkiln::InputBinding;
 using tensorkiln::MatMulOp;
+using tensorkiln::MulOp;
 using tensorkiln::NodeProvenance;
 using tensorkiln::OutputId;
 using tensorkiln::ReferenceInterpreter;
@@ -68,6 +69,7 @@ class DeterministicGenerator final {
 struct SeededFixture final {
   VerifiedGraph graph;
   std::vector<std::array<ValueId, 2U>> add_duplicates;
+  std::vector<std::array<ValueId, 2U>> mul_duplicates;
   std::vector<std::array<ValueId, 2U>> relu_duplicates;
   std::vector<std::array<ValueId, 2U>> redundant_relus;
   std::vector<std::array<ValueId, 2U>> matmul_duplicates;
@@ -162,6 +164,7 @@ void require_bits_equal(const std::span<const float> left,
   std::optional<ValueId> protected_matmul_first;
   std::optional<ValueId> protected_matmul_second;
   std::vector<std::array<ValueId, 2U>> add_duplicates;
+  std::vector<std::array<ValueId, 2U>> mul_duplicates;
   std::vector<std::array<ValueId, 2U>> relu_duplicates;
   std::vector<std::array<ValueId, 2U>> redundant_relus;
   std::vector<std::array<ValueId, 2U>> matmul_duplicates;
@@ -182,6 +185,17 @@ void require_bits_equal(const std::span<const float> left,
       protected_add_first = first_add;
       protected_add_second = second_add;
     }
+
+    const ValueId mul_left = values[generator.index(values.size())];
+    const ValueId mul_right = values[generator.index(values.size())];
+    const ValueId first_mul =
+        require_value(builder.mul(mul_left, mul_right));
+    const ValueId second_mul =
+        require_value(builder.mul(mul_left, mul_right));
+    mul_duplicates.push_back(
+        std::array<ValueId, 2U>{first_mul, second_mul});
+    values.push_back(first_mul);
+    values.push_back(second_mul);
 
     const ValueId first_relu = require_value(builder.relu(first_add));
     const ValueId second_relu = require_value(builder.relu(first_add));
@@ -229,6 +243,7 @@ void require_bits_equal(const std::span<const float> left,
   return SeededFixture{
       require_graph(std::move(builder).finish()),
       std::move(add_duplicates),
+      std::move(mul_duplicates),
       std::move(relu_duplicates),
       std::move(redundant_relus),
       std::move(matmul_duplicates),
@@ -343,6 +358,8 @@ void require_seeded_properties(
   TK_REQUIRE(!fixture.add_duplicates.empty());
   require_protected_pair<AddOp>(first, fixture.add_duplicates[0]);
   require_merged_pairs<AddOp>(first, fixture.add_duplicates, 1U);
+  TK_REQUIRE(!fixture.mul_duplicates.empty());
+  require_merged_pairs<MulOp>(first, fixture.mul_duplicates, 0U);
   require_merged_pairs<ReluOp>(first, fixture.relu_duplicates, 0U);
   require_merged_pairs<ReluOp>(first, fixture.redundant_relus, 0U);
   if (!fixture.matmul_duplicates.empty()) {

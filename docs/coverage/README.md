@@ -3,7 +3,8 @@
 TensorKiln publishes one reviewable GCC/LCOV observation of the implemented
 runtime. The bundle answers a narrow question: which executable production
 lines, functions, and GCC control-flow edges under `src/` were reached by one
-clean run of the current deterministic C++ suite and checked examples?
+clean run of the current deterministic C++ suite, CLI integration checks, and
+checked examples?
 
 [![TensorKiln GCC and LCOV production-source coverage](generated/summary.svg)](generated/summary.svg)
 
@@ -27,9 +28,9 @@ make COVERAGE_JOBS=2 coverage-check
 ```
 
 `coverage` removes only `build/<compiler>/coverage`, performs a fresh
-instrumented build, runs all four checked examples and the complete C++ test
-binary exactly once, then publishes the four payload files and the manifest
-last under `generated/`.
+instrumented build, runs all four checked examples, the CLI integration suite,
+and the complete C++ test binary exactly once, then publishes the four payload
+files and the manifest last under `generated/`.
 `coverage-check` repeats that clean capture and fails unless every committed
 byte is identical. `COVERAGE_JOBS` affects compilation concurrency only; the
 examples and tests execute in their deterministic Makefile order.
@@ -61,6 +62,7 @@ leave `PERL5LIB` unset.
 | Included in the run | Included in the reported denominator |
 | --- | --- |
 | All C++ tests | No |
+| All CLI integration checks | No |
 | All four checked examples | No |
 | Public headers used by those programs | No |
 | Executable records emitted for `src/*.cpp` | Yes |
@@ -99,6 +101,11 @@ measured or capture input. When the selected paths are clean, the recorder
 additionally requires every working blob to match the selected commit before
 setting `commit_bound` to true.
 
+The manifest capture record stores `test_cases_passed`,
+`cli_checks_passed`, and `checked_examples_passed` separately. The text and
+SVG summaries display those validated counts together; none is inferred from
+the presence of an executable or hard-coded into the renderer.
+
 ## Fail-closed capture path
 
 The standard-library-only recorder performs these checks before publishing:
@@ -108,8 +115,10 @@ The standard-library-only recorder performs these checks before publishing:
 2. deletes only the dedicated coverage build directory, then runs
    `make -s -j2 CXX=g++ PROFILE=coverage test` in a narrow `C`/UTC
    environment;
-3. requires empty build/test stderr, all checked example sentinels, every
-   individual `[pass]` line, and an exact `N/N tests passed` summary;
+3. requires empty build/test stderr, all checked example sentinels, exactly one
+   positive and complete `CLI integration: N/N checks passed` line, every
+   individual `[pass]` line, and exactly one positive and complete
+   `N/N tests passed` summary;
 4. requires one `.gcda`/`.gcno` pair for every production translation unit;
 5. invokes `geninfo` with branch collection, external records disabled,
    checksums disabled, one capture worker, and an empty LCOV configuration;

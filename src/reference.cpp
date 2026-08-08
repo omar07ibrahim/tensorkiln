@@ -146,6 +146,21 @@ struct Preflight final {
   return output;
 }
 
+[[nodiscard]] std::vector<float> evaluate_mul(
+    const Tensor& left, const DenseLayout& left_layout, const Tensor& right,
+    const DenseLayout& right_layout, const DenseLayout& output_layout) {
+  std::vector<float> output(output_layout.elements);
+  for (std::size_t index = 0U; index < output.size(); ++index) {
+    const auto coordinates = unravel(index, output_layout);
+    const std::size_t left_offset =
+        broadcast_offset(left_layout, output_layout, coordinates);
+    const std::size_t right_offset =
+        broadcast_offset(right_layout, output_layout, coordinates);
+    output[index] = left.data()[left_offset] * right.data()[right_offset];
+  }
+  return output;
+}
+
 [[nodiscard]] std::vector<float> evaluate_matmul(
     const Tensor& left, const DenseLayout& left_layout, const Tensor& right,
     const DenseLayout& right_layout, const DenseLayout& output_layout) {
@@ -479,6 +494,9 @@ struct Preflight final {
             [elements](const AddOp&) {
               return std::optional<std::uint64_t>{elements};
             },
+            [elements](const MulOp&) {
+              return std::optional<std::uint64_t>{elements};
+            },
             [&, elements](const MatMulOp&) {
               assert(node.inputs().size() == 2U);
               const TensorType* left = graph.type(node.inputs()[0]);
@@ -619,6 +637,19 @@ Result<ReferenceResult> ReferenceInterpreter::run(
               assert(left_index < values.size());
               assert(right_index < values.size());
               return evaluate_add(
+                  values[left_index], execution.layouts[left_index],
+                  values[right_index], execution.layouts[right_index],
+                  execution.layouts[node_index]);
+            },
+            [&](const MulOp&) {
+              assert(node.inputs().size() == 2U);
+              const std::size_t left_index =
+                  static_cast<std::size_t>(node.inputs()[0].ordinal());
+              const std::size_t right_index =
+                  static_cast<std::size_t>(node.inputs()[1].ordinal());
+              assert(left_index < values.size());
+              assert(right_index < values.size());
+              return evaluate_mul(
                   values[left_index], execution.layouts[left_index],
                   values[right_index], execution.layouts[right_index],
                   execution.layouts[node_index]);

@@ -123,7 +123,7 @@ agreement {executor_reference_bits=20/20, executor_fixture_bits=20/20}
 reference_axis0 {status=accepted, scalar_steps=80}
 optimized_axis0 {code=plan_operation_unsupported, message=plan backend does not support softmax axis 0 at #n1}
 verified: last-axis execution and reference agree; valid axis 0 remains reference-only
-CLI integration: 9/9 checks passed
+CLI integration: 14/14 checks passed
 [pass] Arena planner reuses a deterministic two-slot chain
 [pass] Arena planner repeats non-chronological request schedules exactly
 [pass] Arena planner chooses best fit before the lower offset
@@ -211,6 +211,13 @@ CLI integration: 9/9 checks passed
 [pass] Canonical dump is deterministic and graph-owned
 [pass] Graph lookups reject foreign owner-tagged IDs
 [pass] Finalization requires an output and consumes on success
+[pass] Mul preserves existing public ordinals and appends its new kinds
+[pass] Mul graph construction is transactional and broadcasts trailing axes
+[pass] Mul replay CSE and DCE retain exact operand order
+[pass] Mul reference fixes raw IEEE boundary bits
+[pass] Mul arena lifetimes agree in forward and reverse reconstruction
+[pass] Mul reference and execution cover scalar contiguous and rank-four broadcast boundaries
+[pass] Mul reverse verifier independently rejects the wrong kernel class
 [pass] Execution plan compiler seals dense layouts storage and kernels
 [pass] Execution plan dump is stable across calls and compilations
 [pass] Execution plan owns its graph and survives moves
@@ -252,10 +259,14 @@ CLI integration: 9/9 checks passed
 [pass] CLI help states its bounded workload boundary
 [pass] CLI list output is stable in text and JSON formats
 [pass] CLI inspect reports the real compiled plan deterministically
+[pass] CLI inspect compiles the bounded ReGLU-like workload
 [pass] CLI execute audits and reference-checks raw f32 bits
+[pass] CLI execute preserves all ReGLU-like output bits
+[pass] CLI ReGLU-like workload changes on a second nontrivial input
 [pass] CLI execute text changes with a second real input
 [pass] CLI execute rejects missing duplicate and foreign inputs
 [pass] CLI execute validates element count and canonical hex syntax
+[pass] CLI ReGLU-like input parser enforces descriptor boundaries
 [pass] CLI execute maps an unsupported rounding mode to run failure
 [pass] CLI rejects execute-only input options on other commands
 [pass] CLI text inspection exposes plan and kernel sequence
@@ -361,4 +372,4 @@ CLI integration: 9/9 checks passed
 [pass] Tensor type equality is structural
 [pass] Small tensor types satisfy byte-limit boundaries
 
-236/236 tests passed
+247/247 tests passed

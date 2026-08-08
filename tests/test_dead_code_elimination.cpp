@@ -496,7 +496,7 @@ TK_TEST("DCE is deterministic and bit-exact across seeded scalar DAGs") {
     values.reserve(2U + kGeneratedDefinitions);
 
     for (std::size_t step = 0U; step < kGeneratedDefinitions; ++step) {
-      const std::uint32_t selector = generator.next() % 4U;
+      const std::uint32_t selector = generator.next() % 5U;
       ValueId generated = x;
       if (selector == 0U) {
         const std::int32_t numerator =
@@ -514,12 +514,15 @@ TK_TEST("DCE is deterministic and bit-exact across seeded scalar DAGs") {
         const ValueId right = (generator.next() & 3U) == 0U
                                   ? left
                                   : values[generator.index(values.size())];
-        generated = require_value(builder.add(left, right));
+        generated = selector == 4U
+                        ? require_value(builder.mul(left, right))
+                        : require_value(builder.add(left, right));
       }
       values.push_back(generated);
     }
 
-    const ValueId result = values[2U + generator.index(14U)];
+    const ValueId selected = values[2U + generator.index(14U)];
+    const ValueId result = require_value(builder.mul(selected, y));
     require_output(builder.output("result", result));
     require_output(builder.output("alias", result));
     const VerifiedGraph source = require_graph(std::move(builder).finish());

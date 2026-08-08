@@ -117,7 +117,7 @@ void add_common_outputs(tensorkiln::GraphBuilder& builder,
         add_input(builder, inputs, "bias", f32({columns}), random);
     const tensorkiln::ValueId sum = unwrap(builder.add(value, bias));
     const tensorkiln::ValueId early = unwrap(builder.relu(sum));
-    const tensorkiln::ValueId doubled = unwrap(builder.add(early, early));
+    const tensorkiln::ValueId doubled = unwrap(builder.mul(early, early));
     const tensorkiln::ValueId result = unwrap(builder.relu(doubled));
     static_cast<void>(unwrap(builder.add(value, bias)));
     add_common_outputs(builder, early, result);
@@ -137,7 +137,7 @@ void add_common_outputs(tensorkiln::GraphBuilder& builder,
         builder, "bias", f32({columns}), random);
     const tensorkiln::ValueId shifted = unwrap(builder.add(product, bias));
     const tensorkiln::ValueId early = unwrap(builder.relu(shifted));
-    const tensorkiln::ValueId result = unwrap(builder.add(early, early));
+    const tensorkiln::ValueId result = unwrap(builder.mul(early, bias));
     add_common_outputs(builder, product, result);
   } else if (mode == 2U) {
     const std::int64_t batches =
@@ -254,7 +254,7 @@ using OutputBits = std::vector<std::vector<std::uint32_t>>;
 
 TK_TEST("Execution is differential and replayable across seeded dense DAGs") {
   std::size_t mode_coverage[4U]{};
-  std::size_t kernel_coverage[5U]{};
+  std::size_t kernel_coverage[8U]{};
   std::size_t reused_plans = 0U;
   constexpr std::size_t seed_count = 128U;
 
@@ -277,7 +277,7 @@ TK_TEST("Execution is differential and replayable across seeded dense DAGs") {
     }
     for (const tensorkiln::ExecutionStep& step : first_plan.steps()) {
       const std::size_t ordinal = static_cast<std::size_t>(step.kernel());
-      TK_REQUIRE(ordinal < 5U);
+      TK_REQUIRE(ordinal < 8U);
       ++kernel_coverage[ordinal];
     }
 
@@ -296,8 +296,12 @@ TK_TEST("Execution is differential and replayable across seeded dense DAGs") {
   for (const std::size_t covered : mode_coverage) {
     TK_REQUIRE(covered > 0U);
   }
-  for (const std::size_t covered : kernel_coverage) {
-    TK_REQUIRE(covered > 0U);
+  for (std::size_t kernel = 0U; kernel < 8U; ++kernel) {
+    if (kernel == static_cast<std::size_t>(
+                      tensorkiln::DenseKernelKind::softmax_last_axis_f32)) {
+      continue;
+    }
+    TK_REQUIRE(kernel_coverage[kernel] > 0U);
   }
   TK_REQUIRE(reused_plans > seed_count / 2U);
 }

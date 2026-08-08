@@ -34,6 +34,10 @@ std::string_view dense_kernel_kind_name(const DenseKernelKind kind) noexcept {
       return "relu_contiguous_f32";
     case DenseKernelKind::softmax_last_axis_f32:
       return "softmax_last_axis_f32";
+    case DenseKernelKind::mul_contiguous_f32:
+      return "mul_contiguous_f32";
+    case DenseKernelKind::mul_broadcast_f32:
+      return "mul_broadcast_f32";
   }
   return "invalid";
 }

@@ -55,7 +55,7 @@ same rounded numerators that are normalized.
 
 `std::exp` is not required to be bit-identical across operating-system math
 libraries. Softmax comparisons use the tolerance above and a slice-sum check;
-they never inherit the raw-bit claim made for the five pre-existing algebraic
+they never inherit the raw-bit claim made for the seven algebraic
 kernels. The separate fixture uses 80-digit Python `Decimal` exponentials
 rather than extending the existing raw-bit Python corpus. On excess-precision
 targets, each denominator addition is explicitly rounded to binary64. Sticky
@@ -70,6 +70,12 @@ perform one ordinary binary32 addition per output. `Relu` preserves the same
 positive values and quiet-NaN payloads and maps negative values and both signed
 zeros to positive zero. Differential tests require raw-bit agreement for these
 operations; there is no tolerance fallback.
+
+Contiguous and broadcasting `Mul` perform one ordinary binary32 multiplication
+per output after applying trailing-axis broadcasting. Mul has no reduction or
+higher-precision accumulator: its reference and optimized paths both round at
+the ordinary `f32` operation boundary. Differential tests require their raw
+output bits to agree, including signed-zero behavior.
 
 Both dense `MatMul` kernels visit `K` in increasing order, multiply binary32
 operands after conversion to binary64, accumulate in binary64, and convert once
@@ -96,13 +102,13 @@ the environment, and any failed check publishes no result. Builds use
 `-fno-fast-math` and `-ffp-contract=off`.
 
 The seeded arena corpus compares complete output bit patterns with the
-independent reference interpreter across the five pre-existing algebraic
+independent reference interpreter across all seven algebraic
 kernel variants.
-Optimized last-axis Softmax is intentionally excluded from that unchanged
+Optimized last-axis Softmax is intentionally excluded from that algebraic
 raw-bit corpus. Its separate seeded corpus uses tolerance, normalized-slice,
 and translation-invariance checks because `std::exp` may differ across math
-libraries. This evidence is exact for the five fixed algebraic operation paths;
-it is not a license for future fusion, reassociation, contraction, or
+libraries. This evidence is exact for the seven fixed algebraic operation
+paths; it is not a license for future fusion, reassociation, contraction, or
 transcendental kernels to inherit the same claim without a new policy and
 tests. See [execution.md](execution.md).
 
@@ -110,8 +116,10 @@ tests. See [execution.md](execution.md).
 
 Dead-code elimination and structural canonicalization have no numerical
 tolerance. They neither replace nor reorder retained arithmetic. Exact CSE
-reuses one evaluation of an identical operation, and redundant ReLU removal
-uses the interpreter's explicitly idempotent special-value semantics.
+reuses one evaluation of an identical operation with identical ordered
+operands; it does not canonicalize `Add` or `Mul` by commutativity. Redundant
+ReLU removal uses the interpreter's explicitly idempotent special-value
+semantics.
 Whenever source and rewritten executions with the same bindings both complete
 under the caller's `ReferenceLimits`, they must produce bit-identical
 provenance-mapped values and outputs, including signed-zero and NaN payload

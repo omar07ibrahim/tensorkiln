@@ -14,24 +14,33 @@ import html
 import json
 import os
 import re
+import selectors
+import signal
 import stat
+import struct
 import subprocess
 import sys
+import time
+import zlib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final, Sequence
+from typing import Final, Sequence, TypeAlias
 
 
 REPOSITORY_ROOT: Final = Path(__file__).resolve().parents[1]
 DEFAULT_BUILD_DIR: Final = Path("build/g++/release")
 DEFAULT_OUTPUT_DIR: Final = Path("docs/visuals/generated")
 MAX_OUTPUT_BYTES: Final = 1024 * 1024
+MAX_ARTIFACT_BYTES: Final = 8 * 1024 * 1024
 MAX_BINARY_BYTES: Final = 64 * 1024 * 1024
 MAX_SOURCE_BYTES: Final = 16 * 1024 * 1024
 EXAMPLE_TIMEOUT_SECONDS: Final = 30
 GIT_TIMEOUT_SECONDS: Final = 30
+PROCESS_REAP_TIMEOUT_SECONDS: Final = 5
+PROCESS_EXIT_POLL_SECONDS: Final = 0.01
 GIT_BINARY: Final = Path("/usr/bin/git")
 CLI_REPLAYS: Final = 2
+Artifact: TypeAlias = str | bytes
 
 PLAN_SENTINELS: Final = (
     "=== verified interval arena plan ===",
@@ -216,7 +225,164 @@ tensorkiln.execution_plan v0 {
   }
 }
 """
+
+REGLU_LIST_ARGUMENTS: Final = ("list", "--format=json")
+REGLU_INSPECT_ARGUMENTS: Final = (
+    "inspect",
+    "--workload",
+    "reglu_mlp_v1",
+    "--format=json",
+)
+REGLU_EXECUTE_ARGUMENTS: Final = (
+    "execute",
+    "--workload",
+    "reglu_mlp_v1",
+    "--input-bits",
+    (
+        "x=0x3f800000,0x40000000,0x40400000,"
+        "0xbf800000,0x3f000000,0x40800000"
+    ),
+    "--format=json",
+)
+REGLU_LIST_TEXT_ARGUMENTS: Final = ("list",)
+REGLU_INSPECT_TEXT_ARGUMENTS: Final = (
+    "inspect",
+    "--workload",
+    "reglu_mlp_v1",
+)
+REGLU_EXECUTE_TEXT_ARGUMENTS: Final = REGLU_EXECUTE_ARGUMENTS[:-1]
+REGLU_INPUT_BITS: Final = CLI_INPUT_BITS
+REGLU_OUTPUT_BITS: Final = (
+    "0x00000000",
+    "0x40a00000",
+    "0x41480000",
+    "0x40180000",
+    "0x80000000",
+    "0xc0f00000",
+    "0x42040000",
+    "0x00000000",
+)
+REGLU_PLAN_STATS: Final = {
+    "values": 11,
+    "inputs": 1,
+    "constants": 4,
+    "steps": 6,
+    "outputs": 1,
+    "constant_bytes": 128,
+    "scalar_steps": 80,
+    "workspace_bytes": 192,
+}
+REGLU_KERNELS: Final = (
+    {
+        "step": 0,
+        "source_node": 2,
+        "kind": "matmul_rank2_f32",
+        "scalar_steps": 24,
+    },
+    {
+        "step": 1,
+        "source_node": 4,
+        "kind": "add_broadcast_f32",
+        "scalar_steps": 8,
+    },
+    {
+        "step": 2,
+        "source_node": 5,
+        "kind": "relu_contiguous_f32",
+        "scalar_steps": 8,
+    },
+    {
+        "step": 3,
+        "source_node": 7,
+        "kind": "matmul_rank2_f32",
+        "scalar_steps": 24,
+    },
+    {
+        "step": 4,
+        "source_node": 9,
+        "kind": "add_broadcast_f32",
+        "scalar_steps": 8,
+    },
+    {
+        "step": 5,
+        "source_node": 10,
+        "kind": "mul_contiguous_f32",
+        "scalar_steps": 8,
+    },
+)
+REGLU_WORKLOAD: Final = {
+    "id": "reglu_mlp_v1",
+    "kind": "compiled_in",
+    "description": (
+        "f32[2,3] -> dual MatMul+Add branches -> "
+        "Relu(gate) * value -> f32[2,4]"
+    ),
+    "inputs": [
+        {
+            "name": "x",
+            "dtype": "f32",
+            "shape": [2, 3],
+            "elements": 6,
+        }
+    ],
+    "outputs": [
+        {
+            "name": "result",
+            "dtype": "f32",
+            "shape": [2, 4],
+            "elements": 8,
+        }
+    ],
+}
+REGLU_CANONICAL_DUMP: Final = """\
+tensorkiln.execution_plan v0 {
+  limits {values=4096, steps=4096, outputs=64, constant_bytes=268435456, scalar_steps=1073741824, arena_buffers=4096, arena_workspace_bytes=268435456}
+  stats {values=11, inputs=1, constants=4, steps=6, outputs=1, constant_bytes=128, scalar_steps=80, workspace_bytes=192}
+  values {
+    %0 f32[2,3] dense strides=[3,1] storage=input #i0 name=x
+    %1 f32[3,4] dense strides=[4,1] storage=constant #c0 name=W_gate fingerprint=17942347131671705029
+    %2 f32[2,4] dense strides=[4,1] storage=arena #b0 offset=0
+    %3 f32[4] dense strides=[1] storage=constant #c1 name=b_gate fingerprint=6861131082573093515
+    %4 f32[2,4] dense strides=[4,1] storage=arena #b1 offset=64
+    %5 f32[2,4] dense strides=[4,1] storage=arena #b2 offset=0
+    %6 f32[3,4] dense strides=[4,1] storage=constant #c2 name=W_value fingerprint=17915088020765019496
+    %7 f32[2,4] dense strides=[4,1] storage=arena #b3 offset=64
+    %8 f32[4] dense strides=[1] storage=constant #c3 name=b_value fingerprint=2740866829651404690
+    %9 f32[2,4] dense strides=[4,1] storage=arena #b4 offset=128
+    %10 f32[2,4] dense strides=[4,1] storage=arena #b5 offset=64
+  }
+  steps {
+    @0 #n2 %2 = matmul_rank2_f32(%0,%1) work=24
+    @1 #n4 %4 = add_broadcast_f32(%2,%3) work=8
+    @2 #n5 %5 = relu_contiguous_f32(%4) work=8
+    @3 #n7 %7 = matmul_rank2_f32(%0,%6) work=24
+    @4 #n9 %9 = add_broadcast_f32(%7,%8) work=8
+    @5 #n10 %10 = mul_contiguous_f32(%5,%9) work=8
+  }
+  outputs {
+    #o0 result -> %10
+  }
+  arena {
+    #b0 offset=0 payload=32 reserved=64 live=[0,2)
+    #b1 offset=64 payload=32 reserved=64 live=[1,3)
+    #b2 offset=0 payload=32 reserved=64 live=[2,6)
+    #b3 offset=64 payload=32 reserved=64 live=[3,5)
+    #b4 offset=128 payload=32 reserved=64 live=[4,6)
+    #b5 offset=64 payload=32 reserved=64 live=[5,6)
+  }
+}
+"""
 RAW_F32_BITS_PATTERN: Final = re.compile(r"^0x[0-9a-f]{8}$")
+REGLU_STEP_PATTERN: Final = re.compile(
+    r"^    @(?P<step>\d+) #n(?P<node>\d+) %(?P<result>\d+) = "
+    r"(?P<kernel>[a-z0-9_]+)\((?P<operands>%\d+(?:,%\d+)*)\) "
+    r"work=(?P<work>\d+)$"
+)
+REGLU_ARENA_PATTERN: Final = re.compile(
+    r"^    #b(?P<buffer>\d+) offset=(?P<offset>\d+) "
+    r"payload=(?P<payload>\d+) reserved=(?P<reserved>\d+) "
+    r"live=\[(?P<start>\d+),(?P<end>\d+)\)$"
+)
 
 EVIDENCE_SOURCE_PATHSPECS: Final = (
     "Makefile",
@@ -239,6 +405,35 @@ REQUIRED_CLI_EVIDENCE_SOURCES: Final = frozenset(
     {"cli/tensorkiln.cpp"}
 )
 GENERATOR_PATH: Final = "tools/render_readme_visuals.py"
+PUBLISHED_V3_ARTIFACT_SHA256: Final = {
+    "arena-plan.txt": (
+        "5cda0ab2cc42372c6991c2387aca6635212b35d7dbb2391d0af7895f2af1c0bb"
+    ),
+    "arena-reuse.svg": (
+        "9c0baf3fce1d27bc0fc085e360edac24a5e795d31dff75f0a75a2c547bd36088"
+    ),
+    "cli-execute.json": (
+        "2d74429690aa514770d5a137ebf958f8b475a5b1cb4425a36ae7a4e42566b86b"
+    ),
+    "cli-execution.svg": (
+        "d4f0933e2759a0be0181ec4b131fd2656092496f9dfc48ffd40caa4a07e87839"
+    ),
+    "cli-inspect.json": (
+        "bafba37b0c4ece4545ee011cdb904c070bcb456a5180ef1512b6b579340a8690"
+    ),
+    "execute-graph.svg": (
+        "b8e6741259a7b582da5f14f111a9d821ef0279e5736fb0ad9ee3da6b1b442e8e"
+    ),
+    "execute-graph.txt": (
+        "831194f4d7019e85ba32c7e2355dfc49b4caa3f4b1ae7b9db47b75bdae85a2e4"
+    ),
+    "execute-softmax.svg": (
+        "2499cbb7ddd1877aeb040a0522deeab01ce4aff217c4af602b1289243c22f341"
+    ),
+    "execute-softmax.txt": (
+        "a8fde11bd37ec79801fd9c7d8f370501b2d4197dbd5816ff6f461c7469ae5898"
+    ),
+}
 
 UNSAFE_PATTERNS: Final = (
     (
@@ -358,6 +553,15 @@ class VisualEvidenceError(RuntimeError):
     """Raised when an example cannot be used as visual evidence."""
 
 
+class _ProcessOutputLimitExceeded(RuntimeError):
+    """Raised after a bounded child stream emits one byte past its limit."""
+
+    def __init__(self, stream: str, maximum_bytes: int) -> None:
+        super().__init__(f"{stream} exceeds {maximum_bytes} bytes")
+        self.stream = stream
+        self.maximum_bytes = maximum_bytes
+
+
 @dataclass(frozen=True)
 class ArenaAllocation:
     """One allocation parsed from the verified arena example."""
@@ -389,6 +593,46 @@ class CliEvidence:
 
     inspect: dict[str, object]
     execute: dict[str, object]
+    input_bits: tuple[str, ...]
+    output_bits: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class RegluPlanStep:
+    """One dependency-bearing step parsed from the ReGLU canonical plan."""
+
+    step: int
+    source_node: int
+    result_value: int
+    kernel: str
+    operands: tuple[int, ...]
+    scalar_steps: int
+
+
+@dataclass(frozen=True)
+class RegluArenaBuffer:
+    """One source-derived arena interval from the ReGLU canonical plan."""
+
+    buffer: int
+    offset: int
+    payload: int
+    reserved: int
+    live_start: int
+    live_end: int
+
+
+@dataclass(frozen=True)
+class RegluEvidence:
+    """Cross-checked ReGLU JSON, text transcripts, plan, and output bits."""
+
+    workloads: dict[str, object]
+    inspect: dict[str, object]
+    execute: dict[str, object]
+    list_text: str
+    inspect_text: str
+    execute_text: str
+    steps: tuple[RegluPlanStep, ...]
+    arena: tuple[RegluArenaBuffer, ...]
     input_bits: tuple[str, ...]
     output_bits: tuple[str, ...]
 
@@ -711,6 +955,318 @@ def validate_cli_evidence(
     )
 
 
+def _parse_reglu_canonical_plan(
+    canonical_dump: str,
+) -> tuple[tuple[RegluPlanStep, ...], tuple[RegluArenaBuffer, ...]]:
+    """Parse and structurally verify the exact plan used by the diagrams."""
+
+    if canonical_dump != REGLU_CANONICAL_DUMP:
+        raise VisualEvidenceError(
+            "ReGLU canonical dump differs from the exact workload plan"
+        )
+    validate_stdout(
+        "ReGLU canonical dump",
+        canonical_dump,
+        (
+            "tensorkiln.execution_plan v0 {",
+            "    @5 #n10 %10 = mul_contiguous_f32(%5,%9) work=8",
+            "    #b5 offset=64 payload=32 reserved=64 live=[5,6)",
+        ),
+    )
+    steps = tuple(
+        RegluPlanStep(
+            step=int(match.group("step")),
+            source_node=int(match.group("node")),
+            result_value=int(match.group("result")),
+            kernel=match.group("kernel"),
+            operands=tuple(
+                int(item[1:])
+                for item in match.group("operands").split(",")
+            ),
+            scalar_steps=int(match.group("work")),
+        )
+        for line in canonical_dump.splitlines()
+        if (match := REGLU_STEP_PATTERN.fullmatch(line)) is not None
+    )
+    arena = tuple(
+        RegluArenaBuffer(
+            buffer=int(match.group("buffer")),
+            offset=int(match.group("offset")),
+            payload=int(match.group("payload")),
+            reserved=int(match.group("reserved")),
+            live_start=int(match.group("start")),
+            live_end=int(match.group("end")),
+        )
+        for line in canonical_dump.splitlines()
+        if (match := REGLU_ARENA_PATTERN.fullmatch(line)) is not None
+    )
+    expected_steps = (
+        (0, 2, 2, "matmul_rank2_f32", (0, 1), 24),
+        (1, 4, 4, "add_broadcast_f32", (2, 3), 8),
+        (2, 5, 5, "relu_contiguous_f32", (4,), 8),
+        (3, 7, 7, "matmul_rank2_f32", (0, 6), 24),
+        (4, 9, 9, "add_broadcast_f32", (7, 8), 8),
+        (5, 10, 10, "mul_contiguous_f32", (5, 9), 8),
+    )
+    if tuple(
+        (
+            step.step,
+            step.source_node,
+            step.result_value,
+            step.kernel,
+            step.operands,
+            step.scalar_steps,
+        )
+        for step in steps
+    ) != expected_steps:
+        raise VisualEvidenceError("ReGLU plan dependency graph differs")
+    expected_arena = (
+        (0, 0, 32, 64, 0, 2),
+        (1, 64, 32, 64, 1, 3),
+        (2, 0, 32, 64, 2, 6),
+        (3, 64, 32, 64, 3, 5),
+        (4, 128, 32, 64, 4, 6),
+        (5, 64, 32, 64, 5, 6),
+    )
+    if tuple(
+        (
+            item.buffer,
+            item.offset,
+            item.payload,
+            item.reserved,
+            item.live_start,
+            item.live_end,
+        )
+        for item in arena
+    ) != expected_arena:
+        raise VisualEvidenceError("ReGLU arena intervals differ")
+
+    producers = {step.result_value: step.step for step in steps}
+    for step in steps:
+        for operand in step.operands:
+            if operand in producers and producers[operand] >= step.step:
+                raise VisualEvidenceError(
+                    "ReGLU plan contains a non-topological dependency"
+                )
+    if sum(step.scalar_steps for step in steps) != 80:
+        raise VisualEvidenceError("ReGLU plan work does not sum to 80")
+    if max(item.offset + item.reserved for item in arena) != 192:
+        raise VisualEvidenceError("ReGLU arena does not bind 192 bytes")
+    return steps, arena
+
+
+def _validate_reglu_plan(
+    label: str, plan: object, include_dump: bool
+) -> tuple[
+    dict[str, object],
+    tuple[RegluPlanStep, ...] | None,
+    tuple[RegluArenaBuffer, ...] | None,
+]:
+    expected_keys = {"stats", "kernels"}
+    if include_dump:
+        expected_keys.add("canonical_dump")
+    record = _require_exact_keys(label, plan, expected_keys)
+    if not _json_exact(record["stats"], REGLU_PLAN_STATS):
+        raise VisualEvidenceError(f"{label} statistics differ")
+    if not _json_exact(record["kernels"], list(REGLU_KERNELS)):
+        raise VisualEvidenceError(f"{label} kernel sequence differs")
+    if include_dump:
+        canonical_dump = record["canonical_dump"]
+        if not isinstance(canonical_dump, str):
+            raise VisualEvidenceError(
+                "ReGLU inspect canonical dump must be a string"
+            )
+        steps, arena = _parse_reglu_canonical_plan(canonical_dump)
+        return record, steps, arena
+    return record, None, None
+
+
+def _reglu_list_text() -> str:
+    return (
+        "TensorKiln compiled-in workloads\n"
+        f"  {CLI_WORKLOAD['id']}  {CLI_WORKLOAD['description']}\n"
+        f"  {REGLU_WORKLOAD['id']}  {REGLU_WORKLOAD['description']}\n"
+        "scope: bounded examples; no graph or model-file import\n"
+    )
+
+
+def _reglu_inspect_text() -> str:
+    kernels = " -> ".join(
+        str(kernel["kind"]) for kernel in REGLU_KERNELS
+    )
+    return (
+        "TensorKiln plan inspection\n"
+        "schema: tensorkiln.cli.inspect.v1\n"
+        "workload: reglu_mlp_v1\n"
+        "scope: compiled-in workload; not a model-file import\n"
+        "input: x f32[2,3] elements=6\n"
+        "output: result f32[2,4] elements=8\n"
+        "plan: values=11 steps=6 scalar_steps=80 workspace_bytes=192\n"
+        f"kernels: {kernels}\n\n"
+        f"{REGLU_CANONICAL_DUMP}"
+    )
+
+
+def _reglu_execute_text() -> str:
+    kernels = " -> ".join(
+        str(kernel["kind"]) for kernel in REGLU_KERNELS
+    )
+    return (
+        "TensorKiln audited execution\n"
+        "schema: tensorkiln.cli.execute.v1\n"
+        "workload: reglu_mlp_v1\n"
+        "scope: this compiled-in workload and these raw input bits\n"
+        "input: x f32[2,3] bits="
+        f"{','.join(REGLU_INPUT_BITS)}\n"
+        "output: result f32[2,4] bits="
+        f"{','.join(REGLU_OUTPUT_BITS)}\n"
+        "plan: values=11 steps=6 scalar_steps=80 workspace_bytes=192\n"
+        f"kernels: {kernels}\n"
+        "kernel_write_audit: on\n"
+        "reference_check: raw_f32_bits match 8/8\n"
+        "benchmark: false (no timing measurements)\n"
+    )
+
+
+def validate_reglu_evidence(
+    workloads_stdout: str,
+    inspect_stdout: str,
+    execute_stdout: str,
+    list_text_stdout: str,
+    inspect_text_stdout: str,
+    execute_text_stdout: str,
+) -> RegluEvidence:
+    """Validate exact replayed ReGLU JSON and terminal-mode transcripts."""
+
+    workloads = _parse_cli_json("ReGLU CLI list", workloads_stdout)
+    inspect = _parse_cli_json("ReGLU CLI inspect", inspect_stdout)
+    execute = _parse_cli_json("ReGLU CLI execute", execute_stdout)
+    _require_exact_keys("ReGLU CLI list", workloads, {"schema", "workloads"})
+    if workloads["schema"] != "tensorkiln.cli.workloads.v1" or not (
+        _json_exact(workloads["workloads"], [CLI_WORKLOAD, REGLU_WORKLOAD])
+    ):
+        raise VisualEvidenceError("ReGLU workload registry differs")
+    _require_exact_keys(
+        "ReGLU CLI inspect", inspect, {"schema", "workload", "plan"}
+    )
+    _require_exact_keys(
+        "ReGLU CLI execute",
+        execute,
+        {"schema", "workload", "plan", "execution"},
+    )
+    if inspect["schema"] != "tensorkiln.cli.inspect.v1":
+        raise VisualEvidenceError("ReGLU inspect schema differs")
+    if execute["schema"] != "tensorkiln.cli.execute.v1":
+        raise VisualEvidenceError("ReGLU execute schema differs")
+    if not _json_exact(inspect["workload"], REGLU_WORKLOAD):
+        raise VisualEvidenceError("ReGLU inspect workload differs")
+    if not _json_exact(execute["workload"], inspect["workload"]):
+        raise VisualEvidenceError("ReGLU execute workload differs from inspect")
+
+    inspect_plan, steps, arena = _validate_reglu_plan(
+        "ReGLU inspect plan", inspect["plan"], include_dump=True
+    )
+    execute_plan, _, _ = _validate_reglu_plan(
+        "ReGLU execute plan", execute["plan"], include_dump=False
+    )
+    if not _json_exact(execute_plan["stats"], inspect_plan["stats"]) or not (
+        _json_exact(execute_plan["kernels"], inspect_plan["kernels"])
+    ):
+        raise VisualEvidenceError("ReGLU execute plan differs from inspect")
+    assert steps is not None
+    assert arena is not None
+
+    execution = _require_exact_keys(
+        "ReGLU execution",
+        execute["execution"],
+        {
+            "run_status",
+            "kernel_write_audit",
+            "logical_workspace_bytes",
+            "input",
+            "outputs",
+            "reference_check",
+            "verification_scope",
+            "benchmark",
+        },
+    )
+    expected_input = {
+        "name": "x",
+        "dtype": "f32",
+        "shape": [2, 3],
+        "bits": list(REGLU_INPUT_BITS),
+    }
+    expected_outputs = [
+        {
+            "name": "result",
+            "dtype": "f32",
+            "shape": [2, 4],
+            "bits": list(REGLU_OUTPUT_BITS),
+        }
+    ]
+    expected_reference = {
+        "comparison": "raw_f32_bits",
+        "matched": 8,
+        "total": 8,
+        "status": "match",
+    }
+    if execution["run_status"] != "success":
+        raise VisualEvidenceError("ReGLU execution did not report success")
+    if execution["kernel_write_audit"] is not True:
+        raise VisualEvidenceError("ReGLU kernel-write audit is not enabled")
+    if (
+        type(execution["logical_workspace_bytes"]) is not int
+        or execution["logical_workspace_bytes"] != 192
+    ):
+        raise VisualEvidenceError("ReGLU execution workspace differs")
+    if not _json_exact(execution["input"], expected_input):
+        raise VisualEvidenceError("ReGLU execution input differs")
+    if not _json_exact(execution["outputs"], expected_outputs):
+        raise VisualEvidenceError("ReGLU execution output differs")
+    if not _json_exact(execution["reference_check"], expected_reference):
+        raise VisualEvidenceError("ReGLU reference agreement differs")
+    if (
+        execution["verification_scope"] != "this_workload_and_input_bits"
+        or execution["benchmark"] is not False
+    ):
+        raise VisualEvidenceError("ReGLU claim boundary differs")
+    for label, bits, expected_count in (
+        ("input", REGLU_INPUT_BITS, 6),
+        ("output", REGLU_OUTPUT_BITS, 8),
+    ):
+        if len(bits) != expected_count or any(
+            RAW_F32_BITS_PATTERN.fullmatch(item) is None for item in bits
+        ):
+            raise VisualEvidenceError(
+                f"ReGLU {label} bits are not canonical raw f32 values"
+            )
+
+    expected_text = (
+        ("list", list_text_stdout, _reglu_list_text()),
+        ("inspect", inspect_text_stdout, _reglu_inspect_text()),
+        ("execute", execute_text_stdout, _reglu_execute_text()),
+    )
+    for label, actual, expected in expected_text:
+        normalized = validate_stdout(f"ReGLU CLI {label} text", actual, ())
+        if normalized != expected:
+            raise VisualEvidenceError(
+                f"ReGLU CLI {label} text differs from the JSON-bound contract"
+            )
+
+    return RegluEvidence(
+        workloads=workloads,
+        inspect=inspect,
+        execute=execute,
+        list_text=list_text_stdout,
+        inspect_text=inspect_text_stdout,
+        execute_text=execute_text_stdout,
+        steps=steps,
+        arena=arena,
+        input_bits=REGLU_INPUT_BITS,
+        output_bits=REGLU_OUTPUT_BITS,
+    )
+
+
 def _one_match(
     label: str, pattern: re.Pattern[str], lines: list[str]
 ) -> re.Match[str]:
@@ -903,6 +1459,38 @@ def _stdout_digest(stdout: str) -> str:
 
 def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _artifact_bytes(artifact: Artifact) -> bytes:
+    return artifact.encode("utf-8") if isinstance(artifact, str) else artifact
+
+
+def _artifact_media_type(filename: str) -> str:
+    suffix = Path(filename).suffix
+    media_types = {
+        ".gif": "image/gif",
+        ".json": "application/json",
+        ".png": "image/png",
+        ".svg": "image/svg+xml",
+        ".txt": "text/plain; charset=utf-8",
+    }
+    try:
+        return media_types[suffix]
+    except KeyError as error:
+        raise VisualEvidenceError(
+            f"visual artifact has unsupported media type: {filename}"
+        ) from error
+
+
+def _artifact_manifest_record(
+    filename: str, artifact: Artifact
+) -> dict[str, object]:
+    payload = _artifact_bytes(artifact)
+    return {
+        "bytes": len(payload),
+        "media_type": _artifact_media_type(filename),
+        "sha256": hashlib.sha256(payload).hexdigest(),
+    }
 
 
 def render_execute_graph_svg(
@@ -1380,6 +1968,873 @@ def render_cli_execution_svg(
     return rendered
 
 
+def render_reglu_graph_svg(evidence: RegluEvidence) -> str:
+    """Render the two canonical ReGLU branches from parsed plan dependencies."""
+
+    width = 1400
+    height = 680
+    positions = {
+        0: (250, 142),
+        1: (500, 142),
+        2: (750, 142),
+        3: (250, 398),
+        4: (500, 398),
+        5: (1030, 270),
+    }
+    producers = {step.result_value: step.step for step in evidence.steps}
+    if set(positions) != {step.step for step in evidence.steps}:
+        raise VisualEvidenceError("ReGLU graph layout differs from parsed steps")
+
+    svg = [
+        (
+            f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" '
+            f'height="{height}" viewBox="0 0 {width} {height}" role="img" '
+            'aria-labelledby="title description">'
+        ),
+        '  <title id="title">TensorKiln compiled ReGLU branch graph</title>',
+        (
+            '  <desc id="description">Dependency graph parsed from the exact '
+            "reglu_mlp_v1 canonical execution plan: two MatMul and Add "
+            "branches, a ReLU gate, and an elementwise Mul merge.</desc>"
+        ),
+        '  <rect width="100%" height="100%" rx="18" fill="#0d1117"/>',
+        (
+            '  <text x="36" y="48" fill="#f0f6fc" '
+            'font-family="system-ui, sans-serif" font-size="24" '
+            'font-weight="700">Compiled ReGLU-style MLP · reglu_mlp_v1</text>'
+        ),
+        (
+            '  <text x="36" y="76" fill="#8b949e" '
+            'font-family="system-ui, sans-serif" font-size="12">'
+            "SOURCE-DERIVED CANONICAL PLAN · FIXED F32[2,3] FIXTURE · "
+            "NOT A FULL TRANSFORMER</text>"
+        ),
+        (
+            '  <rect x="36" y="258" width="156" height="96" rx="12" '
+            'fill="#13233a" stroke="#58a6ff"/>'
+        ),
+        (
+            '  <text x="114" y="294" text-anchor="middle" fill="#79c0ff" '
+            'font-family="ui-monospace, monospace" font-size="16" '
+            'font-weight="700">%0 · x</text>'
+        ),
+        (
+            '  <text x="114" y="322" text-anchor="middle" fill="#c9d1d9" '
+            'font-family="ui-monospace, monospace" font-size="13">f32[2,3]</text>'
+        ),
+        (
+            '  <text x="114" y="342" text-anchor="middle" fill="#8b949e" '
+            'font-family="system-ui, sans-serif" font-size="11">one bound input</text>'
+        ),
+    ]
+
+    node_width = 206
+    node_height = 116
+    for step in evidence.steps:
+        x, y = positions[step.step]
+        color = "#d2a8ff" if step.step in {2, 5} else "#58a6ff"
+        short_kind = step.kernel.removesuffix("_f32")
+        svg.extend(
+            [
+                (
+                    f'  <rect x="{x}" y="{y}" width="{node_width}" '
+                    f'height="{node_height}" rx="12" fill="{color}" '
+                    f'fill-opacity="0.13" stroke="{color}"/>'
+                ),
+                (
+                    f'  <text x="{x + 16}" y="{y + 30}" fill="{color}" '
+                    'font-family="ui-monospace, monospace" font-size="13" '
+                    f'font-weight="700">@{step.step} · #n{step.source_node}</text>'
+                ),
+                (
+                    f'  <text x="{x + 16}" y="{y + 58}" fill="#f0f6fc" '
+                    'font-family="ui-monospace, monospace" font-size="13" '
+                    f'font-weight="700">{_escape(short_kind)}</text>'
+                ),
+                (
+                    f'  <text x="{x + 16}" y="{y + 82}" fill="#c9d1d9" '
+                    'font-family="ui-monospace, monospace" font-size="11">'
+                    f'{_escape(",".join(f"%{item}" for item in step.operands))} '
+                    f'→ %{step.result_value}</text>'
+                ),
+                (
+                    f'  <text x="{x + 16}" y="{y + 103}" fill="#8b949e" '
+                    'font-family="system-ui, sans-serif" font-size="11">'
+                    f'{step.scalar_steps} scalar steps</text>'
+                ),
+            ]
+        )
+
+    edges: list[tuple[tuple[int, int], tuple[int, int], str]] = []
+    for step in evidence.steps:
+        target_x, target_y = positions[step.step]
+        for operand in step.operands:
+            if operand == 0:
+                edges.append(((192, 306), (target_x, target_y + 58), "%0"))
+            elif operand in producers:
+                producer = producers[operand]
+                source_x, source_y = positions[producer]
+                edges.append(
+                    (
+                        (source_x + node_width, source_y + 58),
+                        (target_x, target_y + 58),
+                        f"%{operand}",
+                    )
+                )
+    edge_nodes: list[str] = []
+    for (x1, y1), (x2, y2), value in edges:
+        midpoint = (x1 + x2) // 2
+        path = f"M{x1},{y1} C{midpoint},{y1} {midpoint},{y2} {x2},{y2}"
+        edge_nodes.extend(
+            [
+                f'  <path d="{path}" fill="none" stroke="#6e7681" '
+                'stroke-width="2"/>',
+                (
+                    f'  <circle cx="{x2 - 5}" cy="{y2}" r="4" '
+                    'fill="#7ee787"/>'
+                ),
+                (
+                    f'  <text x="{midpoint}" y="{(y1 + y2) // 2 - 7}" '
+                    'text-anchor="middle" fill="#8b949e" '
+                    'font-family="ui-monospace, monospace" font-size="10">'
+                    f'{value}</text>'
+                ),
+            ]
+        )
+    svg[7:7] = edge_nodes
+    svg.extend(
+        [
+            (
+                '  <rect x="1270" y="280" width="94" height="96" rx="12" '
+                'fill="#123321" stroke="#3fb950"/>'
+            ),
+            (
+                '  <text x="1317" y="315" text-anchor="middle" fill="#7ee787" '
+                'font-family="ui-monospace, monospace" font-size="13" '
+                'font-weight="700">result</text>'
+            ),
+            (
+                '  <text x="1317" y="342" text-anchor="middle" fill="#c9d1d9" '
+                'font-family="ui-monospace, monospace" font-size="12">f32[2,4]</text>'
+            ),
+            (
+                '  <path d="M1236,328 L1270,328" fill="none" '
+                'stroke="#3fb950" stroke-width="2"/>'
+            ),
+            (
+                '  <rect x="36" y="572" width="1328" height="72" rx="10" '
+                'fill="#161b22" stroke="#30363d"/>'
+            ),
+            (
+                '  <text x="56" y="602" fill="#c9d1d9" '
+                'font-family="system-ui, sans-serif" font-size="13">'
+                "6 verified kernels · 80 scalar steps · 4 constants / 128 B · "
+                "192 B logical workspace</text>"
+            ),
+            (
+                '  <text x="56" y="626" fill="#8b949e" '
+                'font-family="system-ui, sans-serif" font-size="11">'
+                "Constants %1/%3/%6/%8 are omitted; labels drop only _f32. "
+                "All IDs and work counts come from inspect.</text>"
+            ),
+            "</svg>",
+            "",
+        ]
+    )
+    rendered = "\n".join(svg)
+    reject_unsafe_text("ReGLU graph SVG", rendered)
+    return rendered
+
+
+def render_reglu_arena_svg(evidence: RegluEvidence) -> str:
+    """Render the exact six-buffer, three-slot ReGLU arena schedule."""
+
+    width = 1320
+    height = 600
+    axis_x = 230
+    step_width = 160
+    slot_y = {0: 178, 64: 302, 128: 426}
+    colors = ("#58a6ff", "#d2a8ff", "#f2cc60", "#7ee787")
+    if {item.offset for item in evidence.arena} != set(slot_y):
+        raise VisualEvidenceError("ReGLU arena offsets escaped the three slots")
+    svg = [
+        (
+            f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" '
+            f'height="{height}" viewBox="0 0 {width} {height}" role="img" '
+            'aria-labelledby="title description">'
+        ),
+        '  <title id="title">TensorKiln ReGLU arena lifetime schedule</title>',
+        (
+            '  <desc id="description">Six arena buffers parsed from the '
+            "canonical plan reuse three 64-byte aligned slots across six "
+            "kernel boundaries for a 192-byte workspace.</desc>"
+        ),
+        '  <rect width="100%" height="100%" rx="18" fill="#0d1117"/>',
+        (
+            '  <text x="36" y="48" fill="#f0f6fc" '
+            'font-family="system-ui, sans-serif" font-size="24" '
+            'font-weight="700">Arena lifetimes · 192 B verified workspace</text>'
+        ),
+        (
+            '  <text x="36" y="76" fill="#8b949e" '
+            'font-family="system-ui, sans-serif" font-size="12">'
+            "EXACT OFFSETS + HALF-OPEN LIVE INTERVALS FROM INSPECT JSON</text>"
+        ),
+    ]
+    for boundary in range(7):
+        x = axis_x + boundary * step_width
+        svg.extend(
+            [
+                (
+                    f'  <line x1="{x}" y1="118" x2="{x}" y2="500" '
+                    'stroke="#30363d" stroke-width="1"/>'
+                ),
+                (
+                    f'  <text x="{x}" y="108" text-anchor="middle" '
+                    'fill="#8b949e" font-family="ui-monospace, monospace" '
+                    f'font-size="11">@{boundary}</text>'
+                ),
+            ]
+        )
+    for offset, y in slot_y.items():
+        svg.extend(
+            [
+                (
+                    f'  <text x="36" y="{y + 27}" fill="#c9d1d9" '
+                    'font-family="ui-monospace, monospace" font-size="13" '
+                    f'font-weight="700">offset {offset:3d}</text>'
+                ),
+                (
+                    f'  <rect x="{axis_x}" y="{y}" width="{6 * step_width}" '
+                    'height="54" rx="7" fill="#161b22" stroke="#30363d"/>'
+                ),
+            ]
+        )
+    for item in evidence.arena:
+        y = slot_y[item.offset] + 19
+        x = axis_x + item.live_start * step_width + 3
+        rect_width = (item.live_end - item.live_start) * step_width - 6
+        color = colors[item.buffer % len(colors)]
+        svg.extend(
+            [
+                (
+                    f'  <rect x="{x}" y="{y}" width="{rect_width}" '
+                    f'height="16" rx="4" fill="{color}" fill-opacity="0.35" '
+                    f'stroke="{color}"/>'
+                ),
+                (
+                    f'  <text x="{x + 8}" y="{y + 12}" fill="#f0f6fc" '
+                    'font-family="ui-monospace, monospace" font-size="10">'
+                    f'#b{item.buffer} · 32/64 B · '
+                    f'[{item.live_start},{item.live_end})</text>'
+                ),
+            ]
+        )
+    svg.extend(
+        [
+            (
+                '  <text x="36" y="554" fill="#7ee787" '
+                'font-family="system-ui, sans-serif" font-size="13" '
+                'font-weight="700">Boundary reuse: #b0→#b2, '
+                "#b1→#b3→#b5</text>"
+            ),
+            (
+                '  <text x="1284" y="554" text-anchor="end" fill="#8b949e" '
+                'font-family="system-ui, sans-serif" font-size="11">'
+                "6 × 32 B payloads · 3 × 64 B aligned slots</text>"
+            ),
+            "</svg>",
+            "",
+        ]
+    )
+    rendered = "\n".join(svg)
+    reject_unsafe_text("ReGLU arena SVG", rendered)
+    return rendered
+
+
+def _format_raw_f32(bits: str) -> str:
+    value = struct.unpack(">f", bytes.fromhex(bits[2:]))[0]
+    if bits == "0x00000000":
+        return "+0"
+    if bits == "0x80000000":
+        return "-0"
+    return format(value, ".9g")
+
+
+def render_reglu_output_svg(evidence: RegluEvidence) -> str:
+    """Render the complete 2x4 output raw-bit matrix and reference gate."""
+
+    width = 1240
+    height = 540
+    svg = [
+        (
+            f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" '
+            f'height="{height}" viewBox="0 0 {width} {height}" role="img" '
+            'aria-labelledby="title description">'
+        ),
+        '  <title id="title">TensorKiln ReGLU raw f32 output matrix</title>',
+        (
+            '  <desc id="description">All eight executor output words for '
+            "the fixed reglu_mlp_v1 input, including positive and negative "
+            "zero, match the independent reference bit for bit.</desc>"
+        ),
+        '  <rect width="100%" height="100%" rx="18" fill="#0d1117"/>',
+        (
+            '  <text x="36" y="48" fill="#f0f6fc" '
+            'font-family="system-ui, sans-serif" font-size="24" '
+            'font-weight="700">Exact ReGLU output · result f32[2,4]</text>'
+        ),
+        (
+            '  <text x="36" y="76" fill="#8b949e" '
+            'font-family="system-ui, sans-serif" font-size="12">'
+            "ACTUAL RELEASE EXECUTOR BITS · FIXED INPUT · NOT A BENCHMARK</text>"
+        ),
+    ]
+    cell_width = 250
+    cell_height = 128
+    for index, bits in enumerate(evidence.output_bits):
+        row, column = divmod(index, 4)
+        x = 72 + column * (cell_width + 20)
+        y = 116 + row * (cell_height + 20)
+        special_zero = bits in {"0x00000000", "0x80000000"}
+        color = "#f2cc60" if special_zero else "#58a6ff"
+        svg.extend(
+            [
+                (
+                    f'  <rect x="{x}" y="{y}" width="{cell_width}" '
+                    f'height="{cell_height}" rx="12" fill="{color}" '
+                    f'fill-opacity="0.12" stroke="{color}"/>'
+                ),
+                (
+                    f'  <text x="{x + 18}" y="{y + 30}" fill="#8b949e" '
+                    'font-family="system-ui, sans-serif" font-size="11">'
+                    f'[{row},{column}] · raw IEEE-754</text>'
+                ),
+                (
+                    f'  <text x="{x + 18}" y="{y + 67}" fill="{color}" '
+                    'font-family="ui-monospace, monospace" font-size="19" '
+                    f'font-weight="700">{bits}</text>'
+                ),
+                (
+                    f'  <text x="{x + 18}" y="{y + 101}" fill="#c9d1d9" '
+                    'font-family="ui-monospace, monospace" font-size="15">'
+                    f'f32 = {_escape(_format_raw_f32(bits))}</text>'
+                ),
+            ]
+        )
+    svg.extend(
+        [
+            (
+                '  <rect x="72" y="426" width="1060" height="72" rx="10" '
+                'fill="#123321" stroke="#3fb950"/>'
+            ),
+            (
+                '  <text x="96" y="458" fill="#7ee787" '
+                'font-family="system-ui, sans-serif" font-size="20" '
+                'font-weight="700">8 / 8 RAW F32 WORDS MATCH</text>'
+            ),
+            (
+                '  <text x="96" y="483" fill="#c9d1d9" '
+                'font-family="system-ui, sans-serif" font-size="12">'
+                "Independent reference comparison · kernel-write audit ON · "
+                "signed -0 preserved exactly</text>"
+            ),
+            "</svg>",
+            "",
+        ]
+    )
+    rendered = "\n".join(svg)
+    reject_unsafe_text("ReGLU output SVG", rendered)
+    return rendered
+
+
+# Purpose-built 5x7 ASCII glyphs keep terminal rasterization independent of
+# host fonts, fontconfig, locale, and optional imaging libraries.  The table is
+# source code (not a copied font asset) and covers every character admitted by
+# the fixed text-mode evidence contract.
+_RASTER_FONT_SPEC: Final = {
+    " ": "00000/00000/00000/00000/00000/00000/00000",
+    "A": "01110/10001/10001/11111/10001/10001/10001",
+    "B": "11110/10001/10001/11110/10001/10001/11110",
+    "C": "01111/10000/10000/10000/10000/10000/01111",
+    "D": "11110/10001/10001/10001/10001/10001/11110",
+    "E": "11111/10000/10000/11110/10000/10000/11111",
+    "F": "11111/10000/10000/11110/10000/10000/10000",
+    "G": "01111/10000/10000/10111/10001/10001/01111",
+    "H": "10001/10001/10001/11111/10001/10001/10001",
+    "I": "01110/00100/00100/00100/00100/00100/01110",
+    "J": "00111/00010/00010/00010/00010/10010/01100",
+    "K": "10001/10010/10100/11000/10100/10010/10001",
+    "L": "10000/10000/10000/10000/10000/10000/11111",
+    "M": "10001/11011/10101/10101/10001/10001/10001",
+    "N": "10001/11001/10101/10011/10001/10001/10001",
+    "O": "01110/10001/10001/10001/10001/10001/01110",
+    "P": "11110/10001/10001/11110/10000/10000/10000",
+    "Q": "01110/10001/10001/10001/10101/10010/01101",
+    "R": "11110/10001/10001/11110/10100/10010/10001",
+    "S": "01111/10000/10000/01110/00001/00001/11110",
+    "T": "11111/00100/00100/00100/00100/00100/00100",
+    "U": "10001/10001/10001/10001/10001/10001/01110",
+    "V": "10001/10001/10001/10001/10001/01010/00100",
+    "W": "10001/10001/10001/10101/10101/10101/01010",
+    "X": "10001/10001/01010/00100/01010/10001/10001",
+    "Y": "10001/10001/01010/00100/00100/00100/00100",
+    "Z": "11111/00001/00010/00100/01000/10000/11111",
+    "a": "00000/00000/01110/00001/01111/10001/01111",
+    "b": "10000/10000/10110/11001/10001/10001/11110",
+    "c": "00000/00000/01110/10000/10000/10001/01110",
+    "d": "00001/00001/01101/10011/10001/10001/01111",
+    "e": "00000/00000/01110/10001/11111/10000/01110",
+    "f": "00110/01001/01000/11100/01000/01000/01000",
+    "g": "00000/01111/10001/01111/00001/10001/01110",
+    "h": "10000/10000/10110/11001/10001/10001/10001",
+    "i": "00100/00000/01100/00100/00100/00100/01110",
+    "j": "00010/00000/00110/00010/00010/10010/01100",
+    "k": "10000/10000/10010/10100/11000/10100/10010",
+    "l": "01100/00100/00100/00100/00100/00100/01110",
+    "m": "00000/00000/11010/10101/10101/10101/10101",
+    "n": "00000/00000/10110/11001/10001/10001/10001",
+    "o": "00000/00000/01110/10001/10001/10001/01110",
+    "p": "00000/11110/10001/11110/10000/10000/10000",
+    "q": "00000/01111/10001/01111/00001/00001/00001",
+    "r": "00000/00000/10110/11001/10000/10000/10000",
+    "s": "00000/00000/01111/10000/01110/00001/11110",
+    "t": "01000/01000/11100/01000/01000/01001/00110",
+    "u": "00000/00000/10001/10001/10001/10011/01101",
+    "v": "00000/00000/10001/10001/10001/01010/00100",
+    "w": "00000/00000/10001/10001/10101/10101/01010",
+    "x": "00000/00000/10001/01010/00100/01010/10001",
+    "y": "00000/10001/10001/01111/00001/10001/01110",
+    "z": "00000/00000/11111/00010/00100/01000/11111",
+    "0": "01110/10001/10011/10101/11001/10001/01110",
+    "1": "00100/01100/00100/00100/00100/00100/01110",
+    "2": "01110/10001/00001/00010/00100/01000/11111",
+    "3": "11110/00001/00001/01110/00001/00001/11110",
+    "4": "00010/00110/01010/10010/11111/00010/00010",
+    "5": "11111/10000/10000/11110/00001/00001/11110",
+    "6": "01110/10000/10000/11110/10001/10001/01110",
+    "7": "11111/00001/00010/00100/01000/01000/01000",
+    "8": "01110/10001/10001/01110/10001/10001/01110",
+    "9": "01110/10001/10001/01111/00001/00001/01110",
+    "$": "00100/01111/10100/01110/00101/11110/00100",
+    "<": "00010/00100/01000/10000/01000/00100/00010",
+    ">": "01000/00100/00010/00001/00010/00100/01000",
+    "/": "00001/00010/00100/01000/10000/00000/00000",
+    "\\": "10000/01000/00100/00010/00001/00000/00000",
+    "[": "01110/01000/01000/01000/01000/01000/01110",
+    "]": "01110/00010/00010/00010/00010/00010/01110",
+    "(": "00010/00100/01000/01000/01000/00100/00010",
+    ")": "01000/00100/00010/00010/00010/00100/01000",
+    "{": "00010/00100/00100/01000/00100/00100/00010",
+    "}": "01000/00100/00100/00010/00100/00100/01000",
+    ",": "00000/00000/00000/00000/00110/00100/01000",
+    ".": "00000/00000/00000/00000/00000/01100/01100",
+    ":": "00000/01100/01100/00000/01100/01100/00000",
+    ";": "00000/01100/01100/00000/01100/00100/01000",
+    "_": "00000/00000/00000/00000/00000/00000/11111",
+    "-": "00000/00000/00000/11111/00000/00000/00000",
+    "=": "00000/00000/11111/00000/11111/00000/00000",
+    "+": "00000/00100/00100/11111/00100/00100/00000",
+    "#": "01010/01010/11111/01010/11111/01010/01010",
+    "%": "11001/11010/00100/01000/10110/00110/00000",
+    "*": "00000/10101/01110/11111/01110/10101/00000",
+    "|": "00100/00100/00100/00100/00100/00100/00100",
+    "?": "01110/10001/00001/00010/00100/00000/00100",
+    "!": "00100/00100/00100/00100/00100/00000/00100",
+    "@": "01110/10001/10111/10101/10111/10000/01110",
+    "'": "00100/00100/00000/00000/00000/00000/00000",
+    '"': "01010/01010/00000/00000/00000/00000/00000",
+    "&": "01100/10010/10100/01000/10101/10010/01101",
+}
+_RASTER_FONT: Final = {
+    character: tuple(rows.split("/"))
+    for character, rows in _RASTER_FONT_SPEC.items()
+}
+_TERMINAL_PALETTE: Final = (
+    (13, 17, 23),
+    (22, 27, 34),
+    (48, 54, 61),
+    (201, 209, 217),
+    (121, 192, 255),
+    (210, 168, 255),
+    (126, 231, 135),
+    (242, 204, 96),
+)
+TERMINAL_WIDTH: Final = 960
+TERMINAL_HEIGHT: Final = 540
+TERMINAL_GIF_DELAYS_CS: Final = (90, 120, 170)
+
+
+def _fill_indexed_rect(
+    pixels: bytearray,
+    width: int,
+    height: int,
+    x: int,
+    y: int,
+    rect_width: int,
+    rect_height: int,
+    color: int,
+) -> None:
+    if (
+        x < 0
+        or y < 0
+        or rect_width < 0
+        or rect_height < 0
+        or x + rect_width > width
+        or y + rect_height > height
+        or not 0 <= color < len(_TERMINAL_PALETTE)
+    ):
+        raise VisualEvidenceError("terminal raster rectangle is out of bounds")
+    row = bytes([color]) * rect_width
+    for target_y in range(y, y + rect_height):
+        start = target_y * width + x
+        pixels[start : start + rect_width] = row
+
+
+def _draw_raster_text(
+    pixels: bytearray,
+    width: int,
+    height: int,
+    x: int,
+    y: int,
+    text: str,
+    color: int,
+    scale: int = 2,
+) -> None:
+    if scale not in {1, 2, 3}:
+        raise VisualEvidenceError("terminal raster uses an unsupported scale")
+    cursor_x = x
+    for character in text:
+        rows = _RASTER_FONT.get(character)
+        if rows is None:
+            raise VisualEvidenceError(
+                f"terminal raster has no source glyph for {character!r}"
+            )
+        for row_index, row in enumerate(rows):
+            for column_index, bit in enumerate(row):
+                if bit == "1":
+                    _fill_indexed_rect(
+                        pixels,
+                        width,
+                        height,
+                        cursor_x + column_index * scale,
+                        y + row_index * scale,
+                        scale,
+                        scale,
+                        color,
+                    )
+        cursor_x += 6 * scale
+
+
+def _terminal_frame_lines(
+    command: str,
+    stdout: str,
+    columns: int,
+    maximum_rows: int,
+    *,
+    tail: bool,
+) -> list[str]:
+    """Wrap a capture and select complete source lines for a tail frame."""
+
+    if columns <= 0 or maximum_rows <= 0:
+        raise VisualEvidenceError("terminal frame dimensions are invalid")
+    reject_unsafe_text("terminal command", command)
+    normalized = validate_stdout("terminal capture", stdout, ())
+    groups: list[list[str]] = []
+    for line in [f"$ {command}", *normalized.splitlines()]:
+        if not line:
+            groups.append([""])
+            continue
+        wrapped: list[str] = []
+        while line:
+            wrapped.append(line[:columns])
+            line = line[columns:]
+        groups.append(wrapped)
+
+    flattened = [line for group in groups for line in group]
+    if len(flattened) <= maximum_rows:
+        return flattened
+    if not tail:
+        return flattened[:maximum_rows]
+
+    selected: list[list[str]] = []
+    selected_rows = 0
+    for group in reversed(groups):
+        if selected_rows + len(group) > maximum_rows:
+            break
+        selected.append(group)
+        selected_rows += len(group)
+    if not selected:
+        return groups[-1][:maximum_rows]
+    return [line for group in reversed(selected) for line in group]
+
+
+def _render_terminal_frame(
+    title: str,
+    command: str,
+    stdout: str,
+    *,
+    tail: bool,
+) -> bytearray:
+    reject_unsafe_text("terminal frame title", title)
+    width = TERMINAL_WIDTH
+    height = TERMINAL_HEIGHT
+    pixels = bytearray([0]) * (width * height)
+    _fill_indexed_rect(pixels, width, height, 18, 18, 924, 504, 1)
+    _fill_indexed_rect(pixels, width, height, 18, 18, 924, 2, 2)
+    _fill_indexed_rect(pixels, width, height, 18, 520, 924, 2, 2)
+    _fill_indexed_rect(pixels, width, height, 18, 18, 2, 504, 2)
+    _fill_indexed_rect(pixels, width, height, 940, 18, 2, 504, 2)
+    _fill_indexed_rect(pixels, width, height, 20, 20, 920, 48, 0)
+    for index, color in enumerate((7, 5, 6)):
+        _fill_indexed_rect(
+            pixels, width, height, 34 + index * 22, 36, 10, 10, color
+        )
+    _draw_raster_text(pixels, width, height, 112, 33, title, 3, scale=2)
+
+    columns = 73
+    maximum_rows = 24
+    lines = _terminal_frame_lines(
+        command,
+        stdout,
+        columns,
+        maximum_rows,
+        tail=tail,
+    )
+    for row, line in enumerate(lines):
+        color = 3
+        if line.startswith("$"):
+            color = 4
+        elif line.startswith("TensorKiln"):
+            color = 5
+        elif line.startswith("reference_check:"):
+            color = 6
+        elif line.startswith("output:") or "mul_contiguous_f32" in line:
+            color = 7
+        _draw_raster_text(
+            pixels,
+            width,
+            height,
+            36,
+            82 + row * 18,
+            line,
+            color,
+            scale=2,
+        )
+    digest = hashlib.sha256(stdout.encode("ascii")).hexdigest()[:16]
+    _draw_raster_text(
+        pixels,
+        width,
+        height,
+        716,
+        499,
+        f"sha256:{digest}",
+        2,
+        scale=1,
+    )
+    return pixels
+
+
+def _png_chunk(kind: bytes, payload: bytes) -> bytes:
+    checksum = zlib.crc32(kind)
+    checksum = zlib.crc32(payload, checksum) & 0xFFFFFFFF
+    return struct.pack(">I", len(payload)) + kind + payload + struct.pack(">I", checksum)
+
+
+def _adler32(payload: bytes) -> int:
+    """Compute the RFC 1950 checksum without a compression-library dependency."""
+
+    first = 1
+    second = 0
+    modulus = 65521
+    for byte in payload:
+        first = (first + byte) % modulus
+        second = (second + first) % modulus
+    return (second << 16) | first
+
+
+def _stored_zlib(payload: bytes) -> bytes:
+    """Return one canonical zlib stream made only of stored DEFLATE blocks."""
+
+    stream = bytearray(b"\x78\x01")
+    if not payload:
+        stream.extend(b"\x01\x00\x00\xff\xff")
+    else:
+        for start in range(0, len(payload), 65535):
+            block = payload[start : start + 65535]
+            final = start + len(block) == len(payload)
+            stream.append(1 if final else 0)
+            stream.extend(struct.pack("<H", len(block)))
+            stream.extend(struct.pack("<H", len(block) ^ 0xFFFF))
+            stream.extend(block)
+    stream.extend(struct.pack(">I", _adler32(payload)))
+    return bytes(stream)
+
+
+def _indexed_png(
+    pixels: bytearray, width: int, height: int
+) -> bytes:
+    if len(pixels) != width * height:
+        raise VisualEvidenceError("terminal PNG pixel count differs")
+    rows = bytearray()
+    for y in range(height):
+        rows.append(0)
+        for color_index in pixels[y * width : (y + 1) * width]:
+            try:
+                rows.extend(_TERMINAL_PALETTE[color_index])
+            except IndexError as error:
+                raise VisualEvidenceError(
+                    "terminal PNG contains an invalid palette index"
+                ) from error
+    signature = b"\x89PNG\r\n\x1a\n"
+    ihdr = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    return b"".join(
+        (
+            signature,
+            _png_chunk(b"IHDR", ihdr),
+            _png_chunk(b"IDAT", _stored_zlib(bytes(rows))),
+            _png_chunk(b"IEND", b""),
+        )
+    )
+
+
+def _gif_literal_lzw(pixels: bytearray) -> bytes:
+    """Encode literals with bounded clear groups and a fixed four-bit width."""
+
+    clear_code = 8
+    end_code = 9
+    codes: list[int] = []
+    for start in range(0, len(pixels), 6):
+        codes.append(clear_code)
+        chunk = pixels[start : start + 6]
+        if any(value >= 8 for value in chunk):
+            raise VisualEvidenceError("terminal GIF palette index differs")
+        codes.extend(chunk)
+    codes.append(end_code)
+    packed = bytearray()
+    accumulator = 0
+    bit_count = 0
+    for code in codes:
+        accumulator |= code << bit_count
+        bit_count += 4
+        while bit_count >= 8:
+            packed.append(accumulator & 0xFF)
+            accumulator >>= 8
+            bit_count -= 8
+    if bit_count:
+        packed.append(accumulator & 0xFF)
+    return bytes(packed)
+
+
+def _gif_subblocks(payload: bytes) -> bytes:
+    blocks = bytearray()
+    for start in range(0, len(payload), 255):
+        block = payload[start : start + 255]
+        blocks.append(len(block))
+        blocks.extend(block)
+    blocks.append(0)
+    return bytes(blocks)
+
+
+def _indexed_gif(
+    frames: Sequence[bytearray], delays_cs: Sequence[int]
+) -> bytes:
+    if len(frames) != len(delays_cs) or not frames:
+        raise VisualEvidenceError("terminal GIF frame contract differs")
+    width = TERMINAL_WIDTH
+    height = TERMINAL_HEIGHT
+    payload = bytearray(b"GIF89a")
+    payload.extend(struct.pack("<HH", width, height))
+    payload.extend(bytes((0xF2, 0, 0)))
+    for red, green, blue in _TERMINAL_PALETTE:
+        payload.extend((red, green, blue))
+    for frame, delay in zip(frames, delays_cs, strict=True):
+        if len(frame) != width * height or not 1 <= delay <= 1000:
+            raise VisualEvidenceError("terminal GIF frame bounds differ")
+        payload.extend(b"!\xf9\x04")
+        payload.extend(bytes((0,)))
+        payload.extend(struct.pack("<H", delay))
+        payload.extend(bytes((0, 0)))
+        payload.extend(b",")
+        payload.extend(struct.pack("<HHHH", 0, 0, width, height))
+        payload.extend(bytes((0, 3)))
+        payload.extend(_gif_subblocks(_gif_literal_lzw(frame)))
+    payload.extend(b";")
+    return bytes(payload)
+
+
+def _display_cli_command(arguments: Sequence[str]) -> str:
+    command = "<release-build>/tensorkiln"
+    if arguments:
+        command += " " + " ".join(arguments)
+    reject_unsafe_text("display CLI command", command)
+    return command
+
+
+def render_reglu_demo_transcript(evidence: RegluEvidence) -> str:
+    """Return complete real list, inspect, and execute terminal captures."""
+
+    captures = (
+        (REGLU_LIST_TEXT_ARGUMENTS, evidence.list_text),
+        (REGLU_INSPECT_TEXT_ARGUMENTS, evidence.inspect_text),
+        (REGLU_EXECUTE_TEXT_ARGUMENTS, evidence.execute_text),
+    )
+    sections = [
+        f"$ {_display_cli_command(arguments)}\n{stdout}"
+        for arguments, stdout in captures
+    ]
+    transcript = "\n".join(sections)
+    reject_unsafe_text("ReGLU demo transcript", transcript)
+    return transcript
+
+
+def render_reglu_terminal_png(evidence: RegluEvidence) -> bytes:
+    """Rasterize the complete execute view with only source-embedded glyphs."""
+
+    frame = _render_terminal_frame(
+        "TensorKiln ReGLU release CLI",
+        _display_cli_command(REGLU_EXECUTE_TEXT_ARGUMENTS),
+        evidence.execute_text,
+        tail=False,
+    )
+    return _indexed_png(frame, TERMINAL_WIDTH, TERMINAL_HEIGHT)
+
+
+def render_reglu_demo_gif(evidence: RegluEvidence) -> bytes:
+    """Animate three actual CLI text captures with deterministic delays."""
+
+    frame_inputs = (
+        (
+            "1 / 3  Workload registry",
+            REGLU_LIST_TEXT_ARGUMENTS,
+            evidence.list_text,
+            False,
+        ),
+        (
+            "2 / 3  Canonical plan tail",
+            REGLU_INSPECT_TEXT_ARGUMENTS,
+            evidence.inspect_text,
+            True,
+        ),
+        (
+            "3 / 3  Audited execution",
+            REGLU_EXECUTE_TEXT_ARGUMENTS,
+            evidence.execute_text,
+            False,
+        ),
+    )
+    frames = [
+        _render_terminal_frame(
+            title,
+            _display_cli_command(arguments),
+            stdout,
+            tail=tail,
+        )
+        for title, arguments, stdout, tail in frame_inputs
+    ]
+    return _indexed_gif(frames, TERMINAL_GIF_DELAYS_CS)
+
+
 def _slot_groups(
     evidence: ArenaEvidence,
 ) -> tuple[tuple[tuple[int, int], tuple[ArenaAllocation, ...]], ...]:
@@ -1571,6 +3026,189 @@ def render_arena_reuse_svg(stdout: str) -> str:
     return rendered
 
 
+def _terminate_process_group(process: subprocess.Popen[bytes]) -> None:
+    """Kill and reap one isolated evidence process and its descendants."""
+
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    except OSError:
+        try:
+            process.kill()
+        except ProcessLookupError:
+            pass
+    try:
+        process.wait(timeout=PROCESS_REAP_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        try:
+            process.kill()
+        except ProcessLookupError:
+            pass
+        try:
+            process.wait(timeout=PROCESS_REAP_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired as final_error:
+            raise VisualEvidenceError(
+                "could not reap a bounded evidence process"
+            ) from final_error
+
+
+def _wait_for_process_exit_without_reaping(
+    process: subprocess.Popen[bytes],
+    *,
+    arguments: Sequence[str],
+    deadline: float,
+    timeout_seconds: float,
+    stdout: bytearray,
+    stderr: bytearray,
+) -> None:
+    """Observe leader exit while retaining its PID and process-group identity."""
+
+    wait_options = os.WEXITED | os.WNOHANG | os.WNOWAIT
+    while True:
+        try:
+            status = os.waitid(os.P_PID, process.pid, wait_options)
+        except ChildProcessError as error:
+            raise VisualEvidenceError(
+                "bounded evidence process was reaped unexpectedly"
+            ) from error
+        if status is not None:
+            return
+
+        remaining_seconds = deadline - time.monotonic()
+        if remaining_seconds <= 0:
+            raise subprocess.TimeoutExpired(
+                arguments,
+                timeout_seconds,
+                output=bytes(stdout),
+                stderr=bytes(stderr),
+            )
+        time.sleep(min(PROCESS_EXIT_POLL_SECONDS, remaining_seconds))
+
+
+def _run_bounded_process(
+    command: Sequence[str],
+    *,
+    environment: dict[str, str],
+    timeout_seconds: float,
+    maximum_output_bytes: int = MAX_OUTPUT_BYTES,
+) -> subprocess.CompletedProcess[bytes]:
+    """Capture both child streams concurrently within byte and time bounds."""
+
+    if not command:
+        raise VisualEvidenceError("bounded evidence command is empty")
+    if maximum_output_bytes < 0 or timeout_seconds <= 0:
+        raise VisualEvidenceError("bounded evidence process limits are invalid")
+
+    arguments = list(command)
+    process = subprocess.Popen(
+        arguments,
+        cwd=REPOSITORY_ROOT,
+        env=environment,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        bufsize=0,
+        close_fds=True,
+        start_new_session=True,
+    )
+    stdout_stream = process.stdout
+    stderr_stream = process.stderr
+    stdout = bytearray()
+    stderr = bytearray()
+    buffers = {"stdout": stdout, "stderr": stderr}
+    selector: selectors.BaseSelector | None = None
+    deadline = time.monotonic() + timeout_seconds
+
+    try:
+        if stdout_stream is None or stderr_stream is None:
+            raise VisualEvidenceError(
+                "bounded evidence process did not expose both output streams"
+            )
+        streams = {"stdout": stdout_stream, "stderr": stderr_stream}
+        selector = selectors.DefaultSelector()
+        for stream_name, stream in streams.items():
+            descriptor = stream.fileno()
+            os.set_blocking(descriptor, False)
+            selector.register(
+                descriptor,
+                selectors.EVENT_READ,
+                data=stream_name,
+            )
+
+        while selector.get_map():
+            remaining_seconds = deadline - time.monotonic()
+            if remaining_seconds <= 0:
+                raise subprocess.TimeoutExpired(
+                    arguments,
+                    timeout_seconds,
+                    output=bytes(stdout),
+                    stderr=bytes(stderr),
+                )
+            events = selector.select(remaining_seconds)
+            if not events:
+                raise subprocess.TimeoutExpired(
+                    arguments,
+                    timeout_seconds,
+                    output=bytes(stdout),
+                    stderr=bytes(stderr),
+                )
+
+            for key, _event_mask in events:
+                stream_name = key.data
+                buffer = buffers[stream_name]
+                remaining_bytes = maximum_output_bytes - len(buffer)
+                read_size = min(65536, remaining_bytes + 1)
+                try:
+                    chunk = os.read(key.fd, read_size)
+                except BlockingIOError:
+                    continue
+                if not chunk:
+                    selector.unregister(key.fd)
+                    streams[stream_name].close()
+                    continue
+                if len(chunk) > remaining_bytes:
+                    raise _ProcessOutputLimitExceeded(
+                        stream_name, maximum_output_bytes
+                    )
+                buffer.extend(chunk)
+
+        _wait_for_process_exit_without_reaping(
+            process,
+            arguments=arguments,
+            deadline=deadline,
+            timeout_seconds=timeout_seconds,
+            stdout=stdout,
+            stderr=stderr,
+        )
+        _terminate_process_group(process)
+        if process.returncode is None:
+            raise VisualEvidenceError(
+                "bounded evidence process was not reaped"
+            )
+        return subprocess.CompletedProcess(
+            args=arguments,
+            returncode=process.returncode,
+            stdout=bytes(stdout),
+            stderr=bytes(stderr),
+        )
+    finally:
+        try:
+            if process.returncode is None:
+                _terminate_process_group(process)
+        finally:
+            try:
+                if selector is not None:
+                    selector.close()
+            finally:
+                try:
+                    if stdout_stream is not None:
+                        stdout_stream.close()
+                finally:
+                    if stderr_stream is not None:
+                        stderr_stream.close()
+
+
 def _decode_output(label: str, payload: bytes) -> str:
     if len(payload) > MAX_OUTPUT_BYTES:
         raise VisualEvidenceError(
@@ -1601,19 +3239,23 @@ def run_release_example(
         "TZ": "UTC",
     }
     try:
-        completed = subprocess.run(
+        completed = _run_bounded_process(
             [str(binary)],
-            cwd=REPOSITORY_ROOT,
-            env=environment,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
-            timeout=EXAMPLE_TIMEOUT_SECONDS,
+            environment=environment,
+            timeout_seconds=EXAMPLE_TIMEOUT_SECONDS,
+            maximum_output_bytes=MAX_OUTPUT_BYTES,
         )
     except subprocess.TimeoutExpired as error:
         raise VisualEvidenceError(
             f"{binary_name} exceeded {EXAMPLE_TIMEOUT_SECONDS} seconds"
+        ) from error
+    except _ProcessOutputLimitExceeded as error:
+        if error.stream == "stderr":
+            raise VisualEvidenceError(
+                f"{binary_name} wrote to stderr"
+            ) from error
+        raise VisualEvidenceError(
+            f"{binary_name} stdout exceeds {MAX_OUTPUT_BYTES} bytes"
         ) from error
     except OSError as error:
         raise VisualEvidenceError(
@@ -1633,7 +3275,7 @@ def run_release_example(
 def run_release_cli(
     build_dir: Path, label: str, arguments: tuple[str, ...]
 ) -> str:
-    """Run one release CLI command twice and require byte-identical JSON."""
+    """Run one release CLI command twice and require byte-identical stdout."""
 
     binary = build_dir / "tensorkiln"
     if not binary.is_file() or not os.access(binary, os.X_OK):
@@ -1651,20 +3293,24 @@ def run_release_cli(
     payloads: list[bytes] = []
     for replay in range(CLI_REPLAYS):
         try:
-            completed = subprocess.run(
+            completed = _run_bounded_process(
                 [str(binary), *arguments],
-                cwd=REPOSITORY_ROOT,
-                env=environment,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                check=False,
-                timeout=EXAMPLE_TIMEOUT_SECONDS,
+                environment=environment,
+                timeout_seconds=EXAMPLE_TIMEOUT_SECONDS,
+                maximum_output_bytes=MAX_OUTPUT_BYTES,
             )
         except subprocess.TimeoutExpired as error:
             raise VisualEvidenceError(
                 f"{label} replay {replay + 1} exceeded "
                 f"{EXAMPLE_TIMEOUT_SECONDS} seconds"
+            ) from error
+        except _ProcessOutputLimitExceeded as error:
+            if error.stream == "stderr":
+                raise VisualEvidenceError(
+                    f"{label} replay {replay + 1} wrote to stderr"
+                ) from error
+            raise VisualEvidenceError(
+                f"{label} stdout exceeds {MAX_OUTPUT_BYTES} bytes"
             ) from error
         except OSError as error:
             raise VisualEvidenceError(
@@ -1766,7 +3412,7 @@ def _run_git(arguments: Sequence[str]) -> bytes:
         "TZ": "UTC",
     }
     try:
-        completed = subprocess.run(
+        completed = _run_bounded_process(
             [
                 str(GIT_BINARY),
                 "--no-optional-locks",
@@ -1774,17 +3420,21 @@ def _run_git(arguments: Sequence[str]) -> bytes:
                 str(REPOSITORY_ROOT),
                 *arguments,
             ],
-            cwd=REPOSITORY_ROOT,
-            env=environment,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
-            timeout=GIT_TIMEOUT_SECONDS,
+            environment=environment,
+            timeout_seconds=GIT_TIMEOUT_SECONDS,
+            maximum_output_bytes=MAX_OUTPUT_BYTES,
         )
     except subprocess.TimeoutExpired as error:
         raise VisualEvidenceError(
             f"Git provenance command exceeded {GIT_TIMEOUT_SECONDS} seconds"
+        ) from error
+    except _ProcessOutputLimitExceeded as error:
+        if error.stream == "stderr":
+            raise VisualEvidenceError(
+                "Git provenance command wrote to stderr"
+            ) from error
+        raise VisualEvidenceError(
+            "Git provenance output exceeds the evidence limit"
         ) from error
     except OSError as error:
         raise VisualEvidenceError(
@@ -2187,10 +3837,13 @@ def render_visuals(
     build_dir: Path,
     include_softmax: bool = False,
     include_cli: bool = False,
+    include_reglu: bool = False,
     allow_uncommitted_generator: bool = False,
-) -> dict[str, str]:
+) -> dict[str, Artifact]:
     """Collect verified stdout and return deterministic evidence artifacts."""
 
+    if include_reglu:
+        include_cli = True
     if include_cli:
         include_softmax = True
     if not include_softmax:
@@ -2220,6 +3873,13 @@ def render_visuals(
     softmax_stdout = validate_softmax_stdout(softmax_stdout)
     inspect_stdout: str | None = None
     cli_execute_stdout: str | None = None
+    reglu_workloads_stdout: str | None = None
+    reglu_inspect_stdout: str | None = None
+    reglu_execute_stdout: str | None = None
+    reglu_list_text_stdout: str | None = None
+    reglu_inspect_text_stdout: str | None = None
+    reglu_execute_text_stdout: str | None = None
+    reglu_evidence: RegluEvidence | None = None
     if include_cli:
         inspect_stdout = run_release_cli(
             build_dir, "CLI inspect", CLI_INSPECT_ARGUMENTS
@@ -2228,6 +3888,37 @@ def render_visuals(
             build_dir, "CLI execute", CLI_EXECUTE_ARGUMENTS
         )
         validate_cli_evidence(inspect_stdout, cli_execute_stdout)
+    if include_reglu:
+        reglu_workloads_stdout = run_release_cli(
+            build_dir, "ReGLU CLI list JSON", REGLU_LIST_ARGUMENTS
+        )
+        reglu_inspect_stdout = run_release_cli(
+            build_dir, "ReGLU CLI inspect JSON", REGLU_INSPECT_ARGUMENTS
+        )
+        reglu_execute_stdout = run_release_cli(
+            build_dir, "ReGLU CLI execute JSON", REGLU_EXECUTE_ARGUMENTS
+        )
+        reglu_list_text_stdout = run_release_cli(
+            build_dir, "ReGLU CLI list text", REGLU_LIST_TEXT_ARGUMENTS
+        )
+        reglu_inspect_text_stdout = run_release_cli(
+            build_dir,
+            "ReGLU CLI inspect text",
+            REGLU_INSPECT_TEXT_ARGUMENTS,
+        )
+        reglu_execute_text_stdout = run_release_cli(
+            build_dir,
+            "ReGLU CLI execute text",
+            REGLU_EXECUTE_TEXT_ARGUMENTS,
+        )
+        reglu_evidence = validate_reglu_evidence(
+            reglu_workloads_stdout,
+            reglu_inspect_stdout,
+            reglu_execute_stdout,
+            reglu_list_text_stdout,
+            reglu_inspect_text_stdout,
+            reglu_execute_text_stdout,
+        )
     source_after = collect_source_provenance(include_cli=include_cli)
     generator_after = collect_generator_provenance(
         allow_uncommitted_generator
@@ -2270,6 +3961,44 @@ def render_visuals(
                 ),
             }
         )
+    if include_reglu:
+        for filename, expected_sha256 in sorted(
+            PUBLISHED_V3_ARTIFACT_SHA256.items()
+        ):
+            published_artifact = artifacts.get(filename)
+            if published_artifact is None or hashlib.sha256(
+                _artifact_bytes(published_artifact)
+            ).hexdigest() != expected_sha256:
+                raise VisualEvidenceError(
+                    f"v4 capture would alter published v3 artifact {filename}"
+                )
+        assert reglu_workloads_stdout is not None
+        assert reglu_inspect_stdout is not None
+        assert reglu_execute_stdout is not None
+        assert reglu_list_text_stdout is not None
+        assert reglu_inspect_text_stdout is not None
+        assert reglu_execute_text_stdout is not None
+        assert reglu_evidence is not None
+        artifacts.update(
+            {
+                "cli-workloads.json": reglu_workloads_stdout,
+                "reglu-list.txt": reglu_list_text_stdout,
+                "reglu-inspect.json": reglu_inspect_stdout,
+                "reglu-inspect.txt": reglu_inspect_text_stdout,
+                "reglu-execute.json": reglu_execute_stdout,
+                "reglu-execute.txt": reglu_execute_text_stdout,
+                "reglu-graph.svg": render_reglu_graph_svg(reglu_evidence),
+                "reglu-arena.svg": render_reglu_arena_svg(reglu_evidence),
+                "reglu-output.svg": render_reglu_output_svg(reglu_evidence),
+                "reglu-terminal.png": render_reglu_terminal_png(
+                    reglu_evidence
+                ),
+                "reglu-demo.gif": render_reglu_demo_gif(reglu_evidence),
+                "reglu-demo-transcript.txt": render_reglu_demo_transcript(
+                    reglu_evidence
+                ),
+            }
+        )
     claim_boundary = [
         (
             "execute_softmax is crafted five-slice correctness evidence "
@@ -2294,6 +4023,12 @@ def render_visuals(
             "source blobs and captured executable bytes are hashed; the "
             "compiler, operating system, and binary supply chain are not "
             "attested"
+        ),
+        (
+            "full-history checks authenticate recorded commit and tree "
+            "objects; shallow checks bind current generator and source blob "
+            "content but cannot authenticate unavailable historical Git "
+            "objects"
         ),
     ]
     sources = {
@@ -2324,14 +4059,15 @@ def render_visuals(
         schema = "tensorkiln.readme-visual-evidence.v3"
         claim_boundary[0:0] = [
             (
-                "CLI execution evidence is limited to dense_relu_v1 and the "
-                "six committed input-bit values; the CLI is not a graph or "
-                "model-file importer"
+                "the preserved v3 dense CLI evidence is limited to "
+                "dense_relu_v1 and the six committed input-bit values; the "
+                "CLI is not a graph or model-file importer"
             ),
             (
-                "the release CLI was replayed twice per command with "
-                "byte-identical JSON; the execute report enables kernel-write "
-                "auditing and records 4/4 raw-f32-bit reference agreement"
+                "the preserved v3 dense CLI commands were replayed twice per "
+                "command with byte-identical JSON; the dense execute report "
+                "enables kernel-write auditing and records 4/4 raw-f32-bit "
+                "reference agreement"
             ),
             (
                 "the CLI evidence contains no timing fields and is not a "
@@ -2361,6 +4097,94 @@ def render_visuals(
                 },
             },
         }
+    if include_reglu:
+        assert reglu_workloads_stdout is not None
+        assert reglu_inspect_stdout is not None
+        assert reglu_execute_stdout is not None
+        assert reglu_list_text_stdout is not None
+        assert reglu_inspect_text_stdout is not None
+        assert reglu_execute_text_stdout is not None
+        schema = "tensorkiln.readme-visual-evidence.v4"
+        claim_boundary[0:0] = [
+            (
+                "reglu_mlp_v1 is a fixed ReGLU-style compiled-in MLP "
+                "fixture; it is not a full transformer, model importer, "
+                "or graph-file importer"
+            ),
+            (
+                "the fixed six-word input produces eight executor words "
+                "with 8/8 raw-f32-bit independent-reference agreement, "
+                "including exact preservation of negative zero"
+            ),
+            (
+                "registry, inspect, execute, and text terminal evidence was "
+                "replayed twice per command with byte-identical stdout"
+            ),
+            (
+                "GIF frame delays are deterministic presentation settings, "
+                "not captured timings, latency measurements, or benchmark "
+                "results"
+            ),
+        ]
+        commands = sources["tensorkiln"]["commands"]
+        assert isinstance(commands, dict)
+        commands.update(
+            {
+                "reglu_execute_json": {
+                    "arguments": list(REGLU_EXECUTE_ARGUMENTS),
+                    "byte_identical": True,
+                    "replays": CLI_REPLAYS,
+                    "schema": "tensorkiln.cli.execute.v1",
+                    "stdout_artifact": "reglu-execute.json",
+                    "stdout_sha256": _sha256(reglu_execute_stdout),
+                },
+                "reglu_execute_text": {
+                    "arguments": list(REGLU_EXECUTE_TEXT_ARGUMENTS),
+                    "byte_identical": True,
+                    "replays": CLI_REPLAYS,
+                    "schema": "text/plain",
+                    "stdout_artifact": "reglu-execute.txt",
+                    "stdout_sha256": _sha256(reglu_execute_text_stdout),
+                },
+                "reglu_inspect_json": {
+                    "arguments": list(REGLU_INSPECT_ARGUMENTS),
+                    "byte_identical": True,
+                    "replays": CLI_REPLAYS,
+                    "schema": "tensorkiln.cli.inspect.v1",
+                    "stdout_artifact": "reglu-inspect.json",
+                    "stdout_sha256": _sha256(reglu_inspect_stdout),
+                },
+                "reglu_inspect_text": {
+                    "arguments": list(REGLU_INSPECT_TEXT_ARGUMENTS),
+                    "byte_identical": True,
+                    "replays": CLI_REPLAYS,
+                    "schema": "text/plain",
+                    "stdout_artifact": "reglu-inspect.txt",
+                    "stdout_sha256": _sha256(reglu_inspect_text_stdout),
+                },
+                "reglu_list_json": {
+                    "arguments": list(REGLU_LIST_ARGUMENTS),
+                    "byte_identical": True,
+                    "replays": CLI_REPLAYS,
+                    "schema": "tensorkiln.cli.workloads.v1",
+                    "stdout_artifact": "cli-workloads.json",
+                    "stdout_sha256": _sha256(reglu_workloads_stdout),
+                },
+                "reglu_list_text": {
+                    "arguments": list(REGLU_LIST_TEXT_ARGUMENTS),
+                    "byte_identical": True,
+                    "replays": CLI_REPLAYS,
+                    "schema": "text/plain",
+                    "stdout_artifact": "reglu-list.txt",
+                    "stdout_sha256": _sha256(reglu_list_text_stdout),
+                },
+            }
+        )
+        sources["tensorkiln"]["presentation"] = {
+            "gif_delay_centiseconds": list(TERMINAL_GIF_DELAYS_CS),
+            "timing_semantics": "presentation only; not measurements",
+            "transcript_artifact": "reglu-demo-transcript.txt",
+        }
 
     capture_contract = {
         "complete_stdout": True,
@@ -2378,11 +4202,23 @@ def render_visuals(
     if include_cli:
         capture_contract["cli_replays_per_command"] = CLI_REPLAYS
 
+    artifact_records: dict[str, dict[str, object]]
+    if include_reglu:
+        artifact_records = {
+            filename: _artifact_manifest_record(filename, artifact)
+            for filename, artifact in sorted(artifacts.items())
+        }
+    else:
+        artifact_records = {}
+        for filename, artifact in sorted(artifacts.items()):
+            if not isinstance(artifact, str):
+                raise VisualEvidenceError(
+                    "pre-v4 visual bundle unexpectedly contains binary media"
+                )
+            artifact_records[filename] = {"sha256": _sha256(artifact)}
+
     manifest = {
-        "artifacts": {
-            filename: {"sha256": _sha256(text)}
-            for filename, text in sorted(artifacts.items())
-        },
+        "artifacts": artifact_records,
         "capture_contract": capture_contract,
         "claim_boundary": claim_boundary,
         "generator": generator_before,
@@ -2432,6 +4268,7 @@ def output_bundle_schema(output_dir: Path) -> str | None:
         "tensorkiln.readme-visual-evidence.v1",
         "tensorkiln.readme-visual-evidence.v2",
         "tensorkiln.readme-visual-evidence.v3",
+        "tensorkiln.readme-visual-evidence.v4",
     }:
         assert isinstance(schema, str)
         return schema
@@ -2446,15 +4283,25 @@ def output_uses_softmax_bundle(output_dir: Path) -> bool:
     return output_bundle_schema(output_dir) in {
         "tensorkiln.readme-visual-evidence.v2",
         "tensorkiln.readme-visual-evidence.v3",
+        "tensorkiln.readme-visual-evidence.v4",
     }
 
 
 def output_uses_cli_bundle(output_dir: Path) -> bool:
-    """Select v3 CLI evidence after its publication."""
+    """Select v3-or-newer CLI evidence after its publication."""
+
+    return output_bundle_schema(output_dir) in {
+        "tensorkiln.readme-visual-evidence.v3",
+        "tensorkiln.readme-visual-evidence.v4",
+    }
+
+
+def output_uses_reglu_bundle(output_dir: Path) -> bool:
+    """Select v4 ReGLU evidence after its publication."""
 
     return (
         output_bundle_schema(output_dir)
-        == "tensorkiln.readme-visual-evidence.v3"
+        == "tensorkiln.readme-visual-evidence.v4"
     )
 
 
@@ -2528,6 +4375,23 @@ def _validate_recorded_generator(
             "Git reported a malformed shallow-repository state"
         )
     if shallow == "true":
+        payload = _read_regular_file(
+            REPOSITORY_ROOT / GENERATOR_PATH,
+            MAX_SOURCE_BYTES,
+            "current evidence generator",
+        )
+        object_payload = (
+            f"blob {len(payload)}\0".encode("ascii") + payload
+        )
+        current_blob = hashlib.new(object_format, object_payload).hexdigest()
+        if (
+            len(payload) != byte_length
+            or hashlib.sha256(payload).hexdigest() != sha256
+            or current_blob != blob
+        ):
+            raise VisualEvidenceError(
+                "shallow checkout generator differs from recorded evidence"
+            )
         return generator
 
     _run_git(("merge-base", "--is-ancestor", commit, "HEAD"))
@@ -2646,8 +4510,51 @@ def _recorded_binary_fields(
     return byte_length, sha256
 
 
+def _validate_preview_generator(generator: object) -> dict[str, object]:
+    """Validate an explicitly uncommitted non-production renderer record."""
+
+    if not isinstance(generator, dict) or set(generator) != {
+        "bytes",
+        "commit",
+        "committed",
+        "git_blob",
+        "path",
+        "sha256",
+        "tree",
+    }:
+        raise VisualEvidenceError(
+            "preview evidence has malformed generator provenance"
+        )
+    if (
+        generator.get("committed") is not False
+        or generator.get("path") != GENERATOR_PATH
+        or any(
+            generator.get(field) is not None
+            for field in ("commit", "git_blob", "tree")
+        )
+    ):
+        raise VisualEvidenceError(
+            "preview evidence generator is not explicitly uncommitted"
+        )
+    byte_length = generator.get("bytes")
+    sha256 = generator.get("sha256")
+    if (
+        type(byte_length) is not int
+        or byte_length <= 0
+        or byte_length > MAX_SOURCE_BYTES
+        or not isinstance(sha256, str)
+        or re.fullmatch(r"[0-9a-f]{64}", sha256) is None
+    ):
+        raise VisualEvidenceError(
+            "preview evidence generator has malformed byte provenance"
+        )
+    return generator
+
+
 def preserve_recorded_capture_provenance(
-    recorded: object, current: object
+    recorded: object,
+    current: object,
+    allow_uncommitted_generator: bool = False,
 ) -> dict[str, object]:
     """Keep historical generator/ELF identities during cross-toolchain checks.
 
@@ -2671,15 +4578,40 @@ def preserve_recorded_capture_provenance(
         not in {
             "tensorkiln.readme-visual-evidence.v2",
             "tensorkiln.readme-visual-evidence.v3",
+            "tensorkiln.readme-visual-evidence.v4",
         }
         or current_schema != recorded_schema
     ):
         raise VisualEvidenceError(
             "cannot reconcile incompatible visual evidence provenance"
         )
-    current["generator"] = _validate_recorded_generator(
-        recorded.get("generator")
+    recorded_generator = recorded.get("generator")
+    current_generator = current.get("generator")
+    recorded_is_committed = (
+        isinstance(recorded_generator, dict)
+        and recorded_generator.get("committed") is True
     )
+    current_is_committed = (
+        isinstance(current_generator, dict)
+        and current_generator.get("committed") is True
+    )
+    if recorded_is_committed or current_is_committed:
+        if not recorded_is_committed or not current_is_committed:
+            raise VisualEvidenceError(
+                "cannot reconcile committed and preview generators"
+            )
+        current["generator"] = _validate_recorded_generator(
+            recorded_generator
+        )
+    else:
+        if not allow_uncommitted_generator:
+            raise VisualEvidenceError(
+                "uncommitted generator is allowed only for an explicit preview"
+            )
+        recorded_preview = _validate_preview_generator(recorded_generator)
+        current_preview = _validate_preview_generator(current_generator)
+        if recorded_preview == current_preview:
+            current["generator"] = recorded_preview
     current["repository_source"] = _preserve_recorded_repository_source(
         recorded.get("repository_source"),
         current.get("repository_source"),
@@ -2694,7 +4626,10 @@ def preserve_recorded_capture_provenance(
             "committed evidence has malformed source provenance"
         )
     binary_names = ["execute_graph", "execute_softmax", "plan_arena"]
-    if recorded_schema == "tensorkiln.readme-visual-evidence.v3":
+    if recorded_schema in {
+        "tensorkiln.readme-visual-evidence.v3",
+        "tensorkiln.readme-visual-evidence.v4",
+    }:
         binary_names.append("tensorkiln")
     for binary_name in binary_names:
         recorded_source = recorded_sources.get(binary_name)
@@ -2711,7 +4646,11 @@ def preserve_recorded_capture_provenance(
     return current
 
 
-def _normalize_manifest_for_check(current: bytes, expected: bytes) -> bytes:
+def _normalize_manifest_for_check(
+    current: bytes,
+    expected: bytes,
+    allow_uncommitted_generator: bool = False,
+) -> bytes:
     """Retain capture-only provenance while checking all reproducible fields."""
 
     try:
@@ -2730,63 +4669,281 @@ def _normalize_manifest_for_check(current: bytes, expected: bytes) -> bytes:
     if recorded_manifest.get("schema") not in {
         "tensorkiln.readme-visual-evidence.v2",
         "tensorkiln.readme-visual-evidence.v3",
+        "tensorkiln.readme-visual-evidence.v4",
     }:
         return expected
     normalized = preserve_recorded_capture_provenance(
-        recorded_manifest, expected_manifest
+        recorded_manifest,
+        expected_manifest,
+        allow_uncommitted_generator=allow_uncommitted_generator,
     )
     return (
         json.dumps(normalized, indent=2, sort_keys=True) + "\n"
     ).encode("utf-8")
 
 
-def check_visuals(output_dir: Path, generated: dict[str, str]) -> int:
+def _validate_artifact_filename(filename: str) -> None:
+    if (
+        not filename
+        or filename in {".", ".."}
+        or Path(filename).name != filename
+        or "/" in filename
+        or "\\" in filename
+    ):
+        raise VisualEvidenceError(
+            f"visual artifact filename escapes the output directory: {filename!r}"
+        )
+
+
+def _open_output_directory(output_dir: Path) -> int:
+    if not hasattr(os, "O_DIRECTORY") or not hasattr(os, "O_NOFOLLOW"):
+        raise VisualEvidenceError(
+            "secure visual output requires O_DIRECTORY and O_NOFOLLOW"
+        )
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    try:
+        directory_fd = os.open(output_dir, flags)
+    except FileNotFoundError:
+        raise
+    except OSError as error:
+        raise VisualEvidenceError(
+            f"cannot securely open visual output directory: {error}"
+        ) from error
+    try:
+        if not stat.S_ISDIR(os.fstat(directory_fd).st_mode):
+            raise VisualEvidenceError(
+                "visual output destination is not a directory"
+            )
+    except Exception:
+        os.close(directory_fd)
+        raise
+    return directory_fd
+
+
+def _read_output_artifact(directory_fd: int, filename: str) -> bytes:
+    _validate_artifact_filename(filename)
+    flags = os.O_RDONLY | os.O_NOFOLLOW
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NONBLOCK", 0)
+    try:
+        artifact_fd = os.open(filename, flags, dir_fd=directory_fd)
+    except FileNotFoundError:
+        raise
+    except OSError as error:
+        raise VisualEvidenceError(
+            f"cannot securely open visual artifact {filename}: {error}"
+        ) from error
+    try:
+        metadata = os.fstat(artifact_fd)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise VisualEvidenceError(
+                f"visual artifact is not a regular file: {filename}"
+            )
+        if metadata.st_size > MAX_ARTIFACT_BYTES:
+            raise VisualEvidenceError(
+                f"visual artifact exceeds {MAX_ARTIFACT_BYTES} bytes: {filename}"
+            )
+        chunks: list[bytes] = []
+        total = 0
+        while True:
+            chunk = os.read(artifact_fd, min(65536, MAX_ARTIFACT_BYTES + 1 - total))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+            if total > MAX_ARTIFACT_BYTES:
+                raise VisualEvidenceError(
+                    f"visual artifact exceeds {MAX_ARTIFACT_BYTES} bytes: "
+                    f"{filename}"
+                )
+        return b"".join(chunks)
+    finally:
+        os.close(artifact_fd)
+
+
+def _write_output_artifact(
+    directory_fd: int, filename: str, payload: bytes
+) -> None:
+    _validate_artifact_filename(filename)
+    if len(payload) > MAX_ARTIFACT_BYTES:
+        raise VisualEvidenceError(
+            f"visual artifact exceeds {MAX_ARTIFACT_BYTES} bytes: {filename}"
+        )
+    try:
+        existing = os.stat(
+            filename, dir_fd=directory_fd, follow_symlinks=False
+        )
+    except FileNotFoundError:
+        existing = None
+    except OSError as error:
+        raise VisualEvidenceError(
+            f"cannot inspect visual artifact destination {filename}: {error}"
+        ) from error
+    if existing is not None and not stat.S_ISREG(existing.st_mode):
+        raise VisualEvidenceError(
+            f"visual artifact destination is not a regular file: {filename}"
+        )
+
+    temporary_name: str | None = None
+    temporary_fd: int | None = None
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    for _attempt in range(32):
+        candidate = f".{filename}.{os.urandom(12).hex()}.tmp"
+        try:
+            temporary_fd = os.open(
+                candidate,
+                flags,
+                0o600,
+                dir_fd=directory_fd,
+            )
+        except FileExistsError:
+            continue
+        except OSError as error:
+            raise VisualEvidenceError(
+                f"cannot create a secure temporary visual for {filename}: {error}"
+            ) from error
+        temporary_name = candidate
+        break
+    if temporary_fd is None or temporary_name is None:
+        raise VisualEvidenceError(
+            f"could not allocate a unique temporary visual for {filename}"
+        )
+
+    replaced = False
+    try:
+        view = memoryview(payload)
+        written = 0
+        while written < len(view):
+            count = os.write(temporary_fd, view[written:])
+            if count <= 0:
+                raise VisualEvidenceError(
+                    f"short write while creating visual artifact {filename}"
+                )
+            written += count
+        os.fchmod(temporary_fd, 0o644)
+        os.fsync(temporary_fd)
+        descriptor_to_close = temporary_fd
+        temporary_fd = None
+        os.close(descriptor_to_close)
+        os.replace(
+            temporary_name,
+            filename,
+            src_dir_fd=directory_fd,
+            dst_dir_fd=directory_fd,
+        )
+        replaced = True
+        final = os.stat(
+            filename, dir_fd=directory_fd, follow_symlinks=False
+        )
+        if not stat.S_ISREG(final.st_mode):
+            raise VisualEvidenceError(
+                f"written visual artifact is not regular: {filename}"
+            )
+    except VisualEvidenceError:
+        raise
+    except OSError as error:
+        raise VisualEvidenceError(
+            f"cannot atomically publish visual artifact {filename}: {error}"
+        ) from error
+    finally:
+        if temporary_fd is not None:
+            os.close(temporary_fd)
+        if not replaced:
+            try:
+                os.unlink(temporary_name, dir_fd=directory_fd)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                pass
+
+
+def check_visuals(
+    output_dir: Path,
+    generated: dict[str, Artifact],
+    allow_uncommitted_generator: bool = False,
+) -> int:
     """Return nonzero if committed visuals are absent or stale."""
 
     stale = False
-    for filename, text in generated.items():
-        path = output_dir / filename
-        try:
-            current = path.read_bytes()
-        except FileNotFoundError:
-            print(f"visuals: missing {path.relative_to(REPOSITORY_ROOT)}")
-            stale = True
-            continue
-        except OSError as error:
-            raise VisualEvidenceError(f"cannot read {path}: {error}") from error
-
-        expected = text.encode("utf-8")
-        if filename == "manifest.json":
-            expected = _normalize_manifest_for_check(current, expected)
-        if current != expected:
-            current_digest = hashlib.sha256(current).hexdigest()[:12]
-            expected_digest = hashlib.sha256(expected).hexdigest()[:12]
+    try:
+        directory_fd = _open_output_directory(output_dir)
+    except FileNotFoundError:
+        for filename in generated:
             print(
-                f"visuals: stale {path.relative_to(REPOSITORY_ROOT)} "
-                f"({current_digest} != {expected_digest})"
+                f"visuals: missing "
+                f"{(output_dir / filename).relative_to(REPOSITORY_ROOT)}"
+            )
+        return 1
+    try:
+        for filename, artifact in generated.items():
+            path = output_dir / filename
+            try:
+                current = _read_output_artifact(directory_fd, filename)
+            except FileNotFoundError:
+                print(f"visuals: missing {path.relative_to(REPOSITORY_ROOT)}")
+                stale = True
+                continue
+
+            expected = _artifact_bytes(artifact)
+            if filename == "manifest.json":
+                expected = _normalize_manifest_for_check(
+                    current,
+                    expected,
+                    allow_uncommitted_generator=allow_uncommitted_generator,
+                )
+            if current != expected:
+                current_digest = hashlib.sha256(current).hexdigest()[:12]
+                expected_digest = hashlib.sha256(expected).hexdigest()[:12]
+                print(
+                    f"visuals: stale {path.relative_to(REPOSITORY_ROOT)} "
+                    f"({current_digest} != {expected_digest})"
+                )
+                stale = True
+        try:
+            output_names = os.listdir(directory_fd)
+        except OSError as error:
+            raise VisualEvidenceError(
+                f"cannot enumerate {output_dir}: {error}"
+            ) from error
+        orphans = sorted(name for name in output_names if name not in generated)
+        for orphan in orphans:
+            print(
+                "visuals: orphan "
+                f"{(output_dir / orphan).relative_to(REPOSITORY_ROOT)}"
             )
             stale = True
+    finally:
+        os.close(directory_fd)
     return 1 if stale else 0
 
 
-def write_visuals(output_dir: Path, generated: dict[str, str]) -> None:
+def write_visuals(output_dir: Path, generated: dict[str, Artifact]) -> None:
     """Write generated evidence artifacts atomically."""
 
-    output_dir.mkdir(parents=True, exist_ok=True)
-    for filename, text in generated.items():
-        path = output_dir / filename
-        temporary = path.with_name(f".{path.name}.tmp")
+    try:
+        output_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as error:
+        raise VisualEvidenceError(
+            f"cannot create visual output directory: {error}"
+        ) from error
+    directory_fd = _open_output_directory(output_dir)
+    try:
+        for filename, artifact in generated.items():
+            _write_output_artifact(
+                directory_fd, filename, _artifact_bytes(artifact)
+            )
+            path = output_dir / filename
+            print(f"visuals: wrote {path.relative_to(REPOSITORY_ROOT)}")
         try:
-            temporary.write_text(text, encoding="utf-8", newline="\n")
-            temporary.chmod(0o644)
-            os.replace(temporary, path)
+            os.fsync(directory_fd)
         except OSError as error:
-            try:
-                temporary.unlink()
-            except FileNotFoundError:
-                pass
-            raise VisualEvidenceError(f"cannot write {path}: {error}") from error
-        print(f"visuals: wrote {path.relative_to(REPOSITORY_ROOT)}")
+            raise VisualEvidenceError(
+                f"cannot synchronize visual output directory: {error}"
+            ) from error
+    finally:
+        os.close(directory_fd)
 
 
 def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
@@ -2837,6 +4994,14 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--capture-reglu-evidence",
+        action="store_true",
+        help=(
+            "explicitly create the v4 manifest-bound ReGLU media bundle; "
+            "after publication, the v4 manifest selects it automatically"
+        ),
+    )
+    parser.add_argument(
         "--preview-uncommitted-generator",
         action="store_true",
         help=(
@@ -2866,6 +5031,7 @@ def main(argv: list[str] | None = None) -> int:
             and not (
                 arguments.capture_softmax_evidence
                 or arguments.capture_cli_evidence
+                or arguments.capture_reglu_evidence
             )
         ):
             raise VisualEvidenceError(
@@ -2873,10 +5039,19 @@ def main(argv: list[str] | None = None) -> int:
                 "capture flag"
             )
         published_schema = output_bundle_schema(output_dir)
-        include_cli = (
-            arguments.capture_cli_evidence
+        include_reglu = (
+            arguments.capture_reglu_evidence
             or published_schema
-            == "tensorkiln.readme-visual-evidence.v3"
+            == "tensorkiln.readme-visual-evidence.v4"
+        )
+        include_cli = (
+            include_reglu
+            or arguments.capture_cli_evidence
+            or published_schema
+            in {
+                "tensorkiln.readme-visual-evidence.v3",
+                "tensorkiln.readme-visual-evidence.v4",
+            }
         )
         include_softmax = (
             include_cli
@@ -2885,18 +5060,26 @@ def main(argv: list[str] | None = None) -> int:
             in {
                 "tensorkiln.readme-visual-evidence.v2",
                 "tensorkiln.readme-visual-evidence.v3",
+                "tensorkiln.readme-visual-evidence.v4",
             }
         )
         generated = render_visuals(
             build_dir,
             include_softmax=include_softmax,
             include_cli=include_cli,
+            include_reglu=include_reglu,
             allow_uncommitted_generator=(
                 arguments.preview_uncommitted_generator
             ),
         )
         if arguments.check:
-            return check_visuals(output_dir, generated)
+            return check_visuals(
+                output_dir,
+                generated,
+                allow_uncommitted_generator=(
+                    arguments.preview_uncommitted_generator
+                ),
+            )
         write_visuals(output_dir, generated)
         return 0
     except VisualEvidenceError as error:

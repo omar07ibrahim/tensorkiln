@@ -30,6 +30,9 @@ class PlanOperationClass final {
   [[nodiscard]] Kind operator()(const AddOp&) const noexcept {
     return Kind::compute;
   }
+  [[nodiscard]] Kind operator()(const MulOp&) const noexcept {
+    return Kind::compute;
+  }
   [[nodiscard]] Kind operator()(const MatMulOp&) const noexcept {
     return Kind::compute;
   }
@@ -55,6 +58,7 @@ class PlanOperationClass final {
 [[nodiscard]] Result<std::uint64_t> scalar_work_for(
     const VerifiedGraph& source, const Node& node) {
   if (std::holds_alternative<AddOp>(node.operation()) ||
+      std::holds_alternative<MulOp>(node.operation()) ||
       std::holds_alternative<ReluOp>(node.operation())) {
     return Result<std::uint64_t>::success(node.output_type().numel());
   }
