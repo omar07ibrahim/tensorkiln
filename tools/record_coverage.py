@@ -47,7 +47,7 @@ EXPECTED_EXAMPLE_SENTINELS: Final = (
     "=== verified dense execution plan ===",
     "=== verified Softmax execution ===",
 )
-DIRECT_INPUT_ROOTS: Final = ("examples", "include", "src", "tests")
+DIRECT_INPUT_ROOTS: Final = ("cli", "examples", "include", "src", "tests")
 INERT_CACHE_DIRECTORIES: Final = frozenset(
     {
         "__pycache__",

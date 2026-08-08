@@ -85,9 +85,9 @@ The current bundle contains:
   totals.
 
 The manifest deliberately distinguishes the latest commit touching its direct
-input set from the working-tree snapshot. Every regular file under the C++
-source, include, example, and test roots, plus the Makefile and recorder, is
-hashed by bytes and Git blob ID. The only exclusions are inert
+input set from the working-tree snapshot. Every regular file under the CLI,
+C++ source, include, example, and test roots, plus the Makefile and recorder,
+is hashed by bytes and Git blob ID. The only exclusions are inert
 `__pycache__`, `.mypy_cache`, `.pytest_cache`, and `.ruff_cache` directories.
 Untracked, ignored, and deleted tracked inputs force `commit_bound` to false;
 this prevents an untracked header such as `include/vector` from shadowing a
@@ -114,7 +114,7 @@ The standard-library-only recorder performs these checks before publishing:
 5. invokes `geninfo` with branch collection, external records disabled,
    checksums disabled, one capture worker, and an empty LCOV configuration;
 6. filters to real regular files under `src/`, rejects duplicate/escaping
-   sources, and requires all 24 production `.cpp` units;
+   sources, and requires all 25 production `.cpp` units;
 7. independently parses every function, branch, and line counter, recomputes
    `FNF/FNH`, `BRF/BRH`, and `LF/LH`, then cross-checks those totals against
    LCOV's own summary;

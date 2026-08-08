@@ -299,6 +299,7 @@ class SourceSnapshotTests(unittest.TestCase):
         ) as raw:
             root = Path(raw) / "repository"
             for directory in (
+                "cli",
                 "examples",
                 "include",
                 "src",
@@ -353,8 +354,10 @@ class SourceSnapshotTests(unittest.TestCase):
         files = snapshot["files"]
 
         self.assertIn("Makefile", files)
+        self.assertIn("cli/tensorkiln.cpp", files)
         self.assertIn("src/execution.cpp", files)
         self.assertIn("include/tensorkiln/execution.hpp", files)
+        self.assertIn("tests/test_cli_integration.py", files)
         self.assertIn("tests/test_execution.cpp", files)
         self.assertIn("tests/test_coverage_evidence.py", files)
         self.assertIn("tests/test_readme_visuals.py", files)

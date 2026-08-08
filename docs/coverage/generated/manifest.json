@@ -1,26 +1,26 @@
 {
   "artifacts": {
     "coverage.info": {
-      "bytes": 187825,
-      "sha256": "3e57c37edf19c30d02a2cb20c192cfa9529115d82e64718cf3d79c82af563cb4"
+      "bytes": 213518,
+      "sha256": "51bc6d6fe457d22494dd335b1993edd93ce4bd624431ca9365b62fe597be16c4"
     },
     "summary.svg": {
-      "bytes": 11385,
-      "sha256": "74cec308eba9d85726059670369c57c78d20dec6d7a75b0e982edf47889c2d78"
+      "bytes": 11387,
+      "sha256": "2464d48206f5937950c01adfafadd597632caeaef56163d7e59d3b41448bf8b8"
     },
     "summary.txt": {
-      "bytes": 1260,
-      "sha256": "54636069020883c2b4690810d11359b1a8a3c4334e04eadb83372cdf97d65c65"
+      "bytes": 1262,
+      "sha256": "3797a1ba8810f8a496dc6111f793fd35c7ec4c1cb2f562a36dc6b1018581ca84"
     },
     "test-run.txt": {
-      "bytes": 19067,
-      "sha256": "3cf2341df095af8da04689ed06c289a12a491378e39883dffbe61fb48a8f1e62"
+      "bytes": 20286,
+      "sha256": "159e724c69757b79b7fb9864fc49acd1ed94883e70863ab04c751625797780d5"
     }
   },
   "capture": {
     "checked_examples_passed": 4,
     "command": "make -s -j2 CXX=g++ PROFILE=coverage test",
-    "counter_pairs": 51,
+    "counter_pairs": 54,
     "counter_reset": "dedicated build directory removed before run",
     "environment": {
       "LANG": "C",
@@ -31,9 +31,9 @@
     },
     "jobs": 2,
     "network_isolation": "not enforced",
-    "production_translation_units": 24,
+    "production_translation_units": 25,
     "stderr": "empty for the build and test command",
-    "test_cases_passed": 217
+    "test_cases_passed": 236
   },
   "claim_boundary": [
     "one deterministic instrumentation run; not a benchmark",
@@ -46,20 +46,20 @@
   ],
   "metrics": {
     "branches": {
-      "covered": 2651,
+      "covered": 3009,
       "percentage": 49.2,
-      "total": 5387
+      "total": 6111
     },
     "functions": {
-      "covered": 280,
-      "percentage": 94.9,
-      "total": 295
+      "covered": 324,
+      "percentage": 95.3,
+      "total": 340
     },
-    "instrumented_files": 26,
+    "instrumented_files": 27,
     "lines": {
-      "covered": 3433,
+      "covered": 3867,
       "percentage": 87.1,
-      "total": 3943
+      "total": 4442
     }
   },
   "reproduce": [
@@ -71,9 +71,14 @@
     "commit_bound": true,
     "files": {
       "Makefile": {
-        "bytes": 7455,
-        "git_blob": "d773a2c6f2d978edb9916b64f29690f51a00853c",
-        "sha256": "b2605e8486812c3325eec5ed6c41c05dfea785cbd618eb9d76c965662739b31d"
+        "bytes": 8428,
+        "git_blob": "bae5218476034868b81857afb1453225ea7201b2",
+        "sha256": "ec32b3d7bcfa248005fdeb51cb980eef878868698603332e7f1c361dbababb2d"
+      },
+      "cli/tensorkiln.cpp": {
+        "bytes": 823,
+        "git_blob": "3445d88823749f4731dbb74adf9d5d2a5f3dca6c",
+        "sha256": "59bb5bf7a51295f4d3dfd531b45a27e1963b4da9bb57e13a80fd50a42e154dd8"
       },
       "examples/execute_graph.cpp": {
         "bytes": 6511,
@@ -199,6 +204,16 @@
         "bytes": 11143,
         "git_blob": "bef1472afafc5eed9cab2c1a7519048226b16a12",
         "sha256": "ad8183d4f7af60e7b4fdf85b523fb59515109019efdcd5a99a847102449bd373"
+      },
+      "src/cli_app.cpp": {
+        "bytes": 30153,
+        "git_blob": "76d8f1ff68f81f810ec1c93f66e939fc3b7683d8",
+        "sha256": "320947c430f607189a6c9cd3206ba23794063162a2c53d11c6c8e6b9556c0116"
+      },
+      "src/cli_app.hpp": {
+        "bytes": 732,
+        "git_blob": "a7efb29bc906edaee9f4a7c9566c2d6bc8366f5a",
+        "sha256": "cf6f7ac0cfc25de5c1322c1c917d5f0b697db9f132faef5906e6acc8377d4b4b"
       },
       "src/compiler_support.cpp": {
         "bytes": 8055,
@@ -365,10 +380,20 @@
         "git_blob": "68a1505dc9b55809b8a400dc81b6d9781a38afda",
         "sha256": "537ae25a8c6fae7fdcc80a6fe759cdfb878fd4c085e939b012a5ad88dedf0c92"
       },
+      "tests/test_cli_app.cpp": {
+        "bytes": 21531,
+        "git_blob": "f8e98b77897295dc9e73758aeefe40ae7dcf84ee",
+        "sha256": "81d173f27a9391dc846210914974fe49bc80a9eb4a46527bc2f30556cc682b12"
+      },
+      "tests/test_cli_integration.py": {
+        "bytes": 11252,
+        "git_blob": "af5632f9a9f1690e87eb2cce81b3be5ea032dc23",
+        "sha256": "a2dc014e45ef57770c5f4a17fb25323fc8a436533602485f7154d2848620a779"
+      },
       "tests/test_coverage_evidence.py": {
-        "bytes": 23799,
-        "git_blob": "fc208e533b952f45ff21a33946864f7dbb787f41",
-        "sha256": "df4bed82493beddcceec41a3b643433028df2600fafcf15acb0a096b61945c82"
+        "bytes": 23935,
+        "git_blob": "3aa1eb4ccc60b9f7c2a6b30a66d4552ade44f098",
+        "sha256": "85fb145a88e1ef1b4699134cd432f453e4e6c5003e058238cb109af70fc8bdd4"
       },
       "tests/test_dead_code_elimination.cpp": {
         "bytes": 26261,
@@ -421,9 +446,9 @@
         "sha256": "4868d5edb6c7e33a19b640cbad3f5bce94544e49493b18842cc738b6aa87a12a"
       },
       "tests/test_readme_visuals.py": {
-        "bytes": 26605,
-        "git_blob": "54f626faedf6adf5b8a5edd3cba407b88261120e",
-        "sha256": "77ea1b971df7754597bc015b1971c49b4f18b6b9bfdf3afd84438810902abb8b"
+        "bytes": 44309,
+        "git_blob": "96ecd527c72ac6bec6a0f0de9b44fe2e352841e9",
+        "sha256": "bcc3d2d90e1627289c7c322b3218c3f746796da049c374250697a3ebda656a51"
       },
       "tests/test_reference.cpp": {
         "bytes": 27802,
@@ -471,17 +496,17 @@
         "sha256": "aee1cbe2ab754cf3bb61da19cc8574bc9bc06e24895b30c602995973c6cf8949"
       },
       "tools/record_coverage.py": {
-        "bytes": 60664,
-        "git_blob": "a79a396d06a7f0633dd7625b7654f78af1015bf6",
-        "sha256": "127a093b7f08761d5e57000c1705415f9e6f0b906b84a366633edfa04db6ba38"
+        "bytes": 60671,
+        "git_blob": "24540f0d950fda25d926988f48fb767315e77bbd",
+        "sha256": "544fac254945e826eefc7f691c8a9e3efe895fdb1e126c3cf6b434c950d4c0d7"
       }
     },
-    "input_bytes": 812709,
+    "input_bytes": 896020,
     "selected_paths_clean": true,
     "selection": "latest commit touching the direct evidence-input set",
-    "sha256": "acff0febaed9b1840243fd6227f860dc478d3bde567d19d36459fec29d5d11af",
-    "source_commit": "2ec1c1bdcf81f6ae1245b39436abbd530823a442",
-    "source_tree": "ec31bd84fdc9d4f20169a4606201f3c76d677139"
+    "sha256": "f725039ec5cd0c7b7a3a6d8f9b67a491423bcaec7682eb04986a0a8ad7a2a6bf",
+    "source_commit": "3de5e0a21fe573f5e2ecb9a5814be6ee194ec9ce",
+    "source_tree": "87f64b7e2e6f72c2a4a58cf801baa6bdba4f6174"
   },
   "tools": {
     "cxx": {

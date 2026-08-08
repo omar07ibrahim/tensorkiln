@@ -123,6 +123,7 @@ agreement {executor_reference_bits=20/20, executor_fixture_bits=20/20}
 reference_axis0 {status=accepted, scalar_steps=80}
 optimized_axis0 {code=plan_operation_unsupported, message=plan backend does not support softmax axis 0 at #n1}
 verified: last-axis execution and reference agree; valid axis 0 remains reference-only
+CLI integration: 9/9 checks passed
 [pass] Arena planner reuses a deterministic two-slot chain
 [pass] Arena planner repeats non-chronological request schedules exactly
 [pass] Arena planner chooses best fit before the lower offset
@@ -248,6 +249,25 @@ verified: last-axis execution and reference agree; valid axis 0 remains referenc
 [pass] Graph arena lowering covers rank-four batched MatMul lifetimes
 [pass] Graph arena lowering accepts the exact default buffer boundary
 [pass] Graph arena lowering rejects then accepts one beyond the default
+[pass] CLI help states its bounded workload boundary
+[pass] CLI list output is stable in text and JSON formats
+[pass] CLI inspect reports the real compiled plan deterministically
+[pass] CLI execute audits and reference-checks raw f32 bits
+[pass] CLI execute text changes with a second real input
+[pass] CLI execute rejects missing duplicate and foreign inputs
+[pass] CLI execute validates element count and canonical hex syntax
+[pass] CLI execute maps an unsupported rounding mode to run failure
+[pass] CLI rejects execute-only input options on other commands
+[pass] CLI text inspection exposes plan and kernel sequence
+[pass] CLI rejects missing and unknown workloads without stdout
+[pass] CLI renders versioned JSON errors on request
+[pass] CLI option parser rejects duplicate and stray arguments
+[pass] CLI rejects unknown commands and top-level options distinctly
+[pass] CLI bounds and ASCII-validates its argument envelope
+[pass] CLI JSON ignores caller locale and formatting flags
+[pass] CLI execute JSON ignores caller locale and formatting flags
+[pass] CLI reports a failed stdout write as an internal failure
+[pass] CLI returns internal failure when stderr cannot be written
 [pass] Reference binding diagnostics have phase-stable precedence
 [pass] Reference results own feeds and reject foreign value IDs
 [pass] Reference Add broadcasts trailing axes in both operand orders
@@ -341,4 +361,4 @@ verified: last-axis execution and reference agree; valid axis 0 remains referenc
 [pass] Tensor type equality is structural
 [pass] Small tensor types satisfy byte-limit boundaries
 
-217/217 tests passed
+236/236 tests passed
